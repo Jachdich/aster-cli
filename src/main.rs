@@ -167,7 +167,7 @@ fn run_input_thread(tx: std::sync::mpsc::Sender<LocalMessage>) {
 
 fn main() {
     let (tx, rx): (std::sync::mpsc::Sender<LocalMessage>, std::sync::mpsc::Receiver<LocalMessage>) = std::sync::mpsc::channel();
-    //let (tx2, rx2): (std::sync::mpsc::Sender<String>, std::sync::mpsc::Receiver<String>) = std::sync::mpsc::channel();
+    let (tx2, rx2): (std::sync::mpsc::Sender<String>, std::sync::mpsc::Receiver<String>) = std::sync::mpsc::channel();
     
     run_network_thread(tx.clone());
     run_input_thread(tx.clone());
