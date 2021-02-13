@@ -76,26 +76,24 @@ fn process_input<R: Read, W: Write>(screen: &mut W, stdin: &mut R) -> bool {
     return false;
 }
 
-fn main() {
-    let mut loaded_messages: Vec<Message> = Vec::new();
+async fn run_gui(loaded_messages: &mut Vec<Message>) {
+    let stdout = stdout().into_raw_mode().unwrap();
+    let mut stdin = stdin();
 
-    let child = std::thread::spawn(move || {
-        let stdout = stdout().into_raw_mode().unwrap();
-        let mut stdin = stdin();
-    
-    	let mut screen = termion::screen::AlternateScreen::from(stdout).into_raw_mode().unwrap();
-        draw_screen(&mut screen, SERVER_MODE, &loaded_messages);
-        screen.flush().unwrap();
-        loop {
-            write!(screen, "{}{}", termion::cursor::Goto(1, 1), termion::clear::CurrentLine).unwrap();
-    	    if process_input(&mut screen, &mut stdin) {
-    	        break;
-    	    }
-    	    draw_screen(&mut screen, SERVER_MODE, &loaded_messages);
-    	    screen.flush().unwrap();
-    	}
-    });
+	let mut screen = termion::screen::AlternateScreen::from(stdout).into_raw_mode().unwrap();
+    draw_screen(&mut screen, SERVER_MODE, loaded_messages);
+    screen.flush().unwrap();
+    loop {
+        write!(screen, "{}{}", termion::cursor::Goto(1, 1), termion::clear::CurrentLine).unwrap();
+	    if process_input(&mut screen, &mut stdin) {
+	        break;
+	    }
+	    draw_screen(&mut screen, SERVER_MODE, loaded_messages);
+	    screen.flush().unwrap();
+	}
+}
 
+async fn run_network() {
     match TcpStream::connect("127.0.0.1:2345") {
         Ok(mut stream) => {
             //println!("Connected to server port 42069");
@@ -113,7 +111,7 @@ fn main() {
             match stream.read_exact(&mut data) {
                 Ok(_) => {
                     let text = from_utf8(&data).unwrap();
-                    loaded_messages.push(Message{author: User{nick: "Jams lol".to_string(), uuid: 1}, content: text.to_string()});
+                    //loaded_messages.push(Message{author: User{nick: "Jams lol".to_string(), uuid: 1}, content: text.to_string()});
                     //println!("{}", text);
                 },
                 Err(e) => {
@@ -125,6 +123,15 @@ fn main() {
             //println!("Failed to connect: {}", e);
         }
     }
+}
 
-    let res = child.join();
+async fn async_main() {
+    let mut loaded_messages: Vec<Message> = Vec::new();
+    let f1 = run_gui(&mut loaded_messages);
+    let f2 = run_network();
+    futures::join!(f1, f2);
+}
+
+fn main() {
+    futures::executor::block_on(async_main());
 }
