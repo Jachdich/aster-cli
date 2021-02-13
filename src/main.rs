@@ -1,11 +1,13 @@
 use openssl::ssl::{SslMethod, SslConnector, SslVerifyMode};
-use std::net::TcpStream;
+use std::io::BufReader;
 use std::str::from_utf8;
+use std::net::TcpStream;
 extern crate termion;
+extern crate tokio;
 
 use termion::raw::IntoRawMode;
 use termion::event::Key;
-use std::io::{Write, Read, stdout, stdin};
+use std::io::{Write, stdout, stdin};
 use crate::termion::input::TermRead;
 
 const SERVER_MODE: u8 = 0;
@@ -20,7 +22,7 @@ struct User {
 }
 
 struct Message {
-    author: User,
+//    author: User,
     content: String,
 //    time: chrono::DateTime,
 }
@@ -30,7 +32,7 @@ fn draw_messages<W: Write>(screen: &mut W, messages: &Vec<Message>) {
     
     let mut line = 2;
     for message in messages.iter() {
-        write!(screen, "{}{}: {}{}", termion::cursor::Goto(28, line), message.author.nick, message.content, "").unwrap();
+        write!(screen, "{}{}{}", termion::cursor::Goto(28, line), message.content, "").unwrap();
         line += 1;
     }
 }
@@ -50,7 +52,12 @@ fn draw_border<W: Write>(screen: &mut W) {
 
 }
 
-fn draw_screen<W: Write>(screen: &mut W, mode: u8, messages: &Vec<Message>) {
+enum LocalMessage {
+    Keyboard(Key),
+    Network(String),
+}
+
+fn draw_screen<W: Write>(screen: &mut W, mode: u8, messages: &Vec<Message>, buffer: &String) {
     let (width, height) = termion::terminal_size().unwrap();
 
     if width < 32 || height < 8 {
@@ -61,39 +68,57 @@ fn draw_screen<W: Write>(screen: &mut W, mode: u8, messages: &Vec<Message>) {
     if mode == SERVER_MODE {
         draw_border(screen);
         draw_messages(screen, messages);
+        write!(screen, "{}{}", termion::cursor::Goto(28, height - 1), buffer);
     }
 }
 
-fn process_input<R: Read, W: Write>(screen: &mut W, stdin: &mut R) -> bool {
-    if let Some(c) = stdin.keys().next() {
-        match c.unwrap() {
-            Key::Ctrl('c') => return true,
-            Key::Up        => write!(screen, "<up>").unwrap(),
-            Key::Down      => write!(screen, "<down>").unwrap(),
-            _              => (),
-        }
-    }
-    return false;
-}
-
-async fn run_gui(loaded_messages: &mut Vec<Message>) {
-    let stdout = stdout().into_raw_mode().unwrap();
+fn process_input(tx: std::sync::mpsc::Sender<LocalMessage>) {
     let mut stdin = stdin();
 
+    for c in stdin.keys() {
+        tx.send(LocalMessage::Keyboard(c.as_ref().unwrap().clone()));
+    }
+}
+
+fn run_gui(rx: std::sync::mpsc::Receiver<LocalMessage>, tx: std::sync::mpsc::Sender<String>) {
+    let stdout = stdout().into_raw_mode().unwrap();
+
+    let mut loaded_messages: Vec<Message> = Vec::new();
+    let mut buffer: String = "".to_string();
+    
 	let mut screen = termion::screen::AlternateScreen::from(stdout).into_raw_mode().unwrap();
-    draw_screen(&mut screen, SERVER_MODE, loaded_messages);
+    draw_screen(&mut screen, SERVER_MODE, &loaded_messages, &buffer);
     screen.flush().unwrap();
     loop {
         write!(screen, "{}{}", termion::cursor::Goto(1, 1), termion::clear::CurrentLine).unwrap();
-	    if process_input(&mut screen, &mut stdin) {
-	        break;
+	    
+	    match rx.recv().unwrap() {
+	        LocalMessage::Keyboard(key) => {
+	            match key {
+	                Key::Ctrl('c') => return,
+	                Key::Char('\n') => {
+	                    buffer = "".to_string();
+	                }
+	                Key::Char(ch) => {
+	                   buffer.push(ch); 
+	                },
+	                Key::Backspace => {
+	                    buffer.pop();
+	                }
+	                _ => (),
+	            }
+	        },
+
+	        LocalMessage::Network(msg) => {
+	            loaded_messages.push(Message{content: msg});
+	        },
 	    }
-	    draw_screen(&mut screen, SERVER_MODE, loaded_messages);
+	    draw_screen(&mut screen, SERVER_MODE, &loaded_messages, &buffer);
 	    screen.flush().unwrap();
 	}
 }
 
-async fn run_network() {
+fn run_network(tx: std::sync::mpsc::Sender<LocalMessage>) {
     match TcpStream::connect("127.0.0.1:2345") {
         Ok(mut stream) => {
             //println!("Connected to server port 42069");
@@ -102,20 +127,23 @@ async fn run_network() {
                 .unwrap();
             connector.set_verify(SslVerifyMode::NONE);
             let connector = connector.build();
+
+            let mut reader = BufReader::new(stream);
             
             //let mut sslstream = connector.connect("127.0.0.1", stream).unwrap();
 
-            let msg = b"hello, world";
-            stream.write(msg).unwrap(); //todo handle error
-            let mut data = [0 as u8; 12];
-            match stream.read_exact(&mut data) {
-                Ok(_) => {
-                    let text = from_utf8(&data).unwrap();
-                    //loaded_messages.push(Message{author: User{nick: "Jams lol".to_string(), uuid: 1}, content: text.to_string()});
-                    //println!("{}", text);
-                },
-                Err(e) => {
-                    //println!("Failed to recv data: {}", e);
+            //let msg = b"hello, world";
+            //stream.write(msg).unwrap(); //todo handle error
+            loop {
+                let result = reader.read_line();
+                match result {
+                    Ok(data) => {
+                        let text = data;
+                        tx.send(LocalMessage::Network(text.unwrap()));
+                    },
+                    Err(e) => {
+                        //println!("Failed to recv data: {}", e);
+                    }
                 }
             }
         },
@@ -125,13 +153,24 @@ async fn run_network() {
     }
 }
 
-async fn async_main() {
-    let mut loaded_messages: Vec<Message> = Vec::new();
-    let f1 = run_gui(&mut loaded_messages);
-    let f2 = run_network();
-    futures::join!(f1, f2);
+fn run_network_thread(tx: std::sync::mpsc::Sender<LocalMessage>) {
+    std::thread::spawn(move || {
+        run_network(tx);
+    });
+}
+
+fn run_input_thread(tx: std::sync::mpsc::Sender<LocalMessage>) {
+    std::thread::spawn(move || {
+        process_input(tx);
+    });
 }
 
 fn main() {
-    futures::executor::block_on(async_main());
+    let (tx, rx): (std::sync::mpsc::Sender<LocalMessage>, std::sync::mpsc::Receiver<LocalMessage>) = std::sync::mpsc::channel();
+    //let (tx2, rx2): (std::sync::mpsc::Sender<String>, std::sync::mpsc::Receiver<String>) = std::sync::mpsc::channel();
+    
+    run_network_thread(tx.clone());
+    run_input_thread(tx.clone());
+    run_gui(rx, tx2);
+    
 }

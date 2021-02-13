@@ -11,3 +11,7 @@ openssl-sys = "0.9"
 openssl = "0.10"
 termion = "*"
 futures = "*"
+tokio = { version = "1.0.0", features = ["full", "tracing"] }
+tokio-util = { version = "0.6.3", features = ["full"] }
+tokio-stream = { version = "0.1" }
+
