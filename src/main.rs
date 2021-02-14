@@ -80,7 +80,7 @@ fn process_input(tx: std::sync::mpsc::Sender<LocalMessage>) {
     }
 }
 
-fn run_gui(rx: std::sync::mpsc::Receiver<LocalMessage>, tx: std::sync::mpsc::Sender<String>) {
+fn run_gui(rx: std::sync::mpsc::Receiver<LocalMessage>, mut stream: TcpStream) {
     let stdout = stdout().into_raw_mode().unwrap();
 
     let mut loaded_messages: Vec<Message> = Vec::new();
@@ -97,6 +97,9 @@ fn run_gui(rx: std::sync::mpsc::Receiver<LocalMessage>, tx: std::sync::mpsc::Sen
 	            match key {
 	                Key::Ctrl('c') => return,
 	                Key::Char('\n') => {
+	                    stream.write(buffer.as_bytes());
+	                    stream.write(b"\n");
+	                    loaded_messages.push(Message{content: format!("Jams: {}", buffer)});
 	                    buffer = "".to_string();
 	                }
 	                Key::Char(ch) => {
@@ -118,59 +121,48 @@ fn run_gui(rx: std::sync::mpsc::Receiver<LocalMessage>, tx: std::sync::mpsc::Sen
 	}
 }
 
-fn run_network(tx: std::sync::mpsc::Sender<LocalMessage>) {
-    match TcpStream::connect("127.0.0.1:2345") {
-        Ok(mut stream) => {
-            //println!("Connected to server port 42069");
+fn run_network(tx: std::sync::mpsc::Sender<LocalMessage>, stream: TcpStream) {
 
-            let mut connector = SslConnector::builder(SslMethod::tls())
-                .unwrap();
-            connector.set_verify(SslVerifyMode::NONE);
-            let connector = connector.build();
+    let mut connector = SslConnector::builder(SslMethod::tls())
+        .unwrap();
+    connector.set_verify(SslVerifyMode::NONE);
+    let connector = connector.build();
 
-            let mut reader = BufReader::new(stream);
-            
-            //let mut sslstream = connector.connect("127.0.0.1", stream).unwrap();
+    let mut reader = BufReader::new(stream);
+    
+    //let mut sslstream = connector.connect("127.0.0.1", stream).unwrap();
 
-            //let msg = b"hello, world";
-            //stream.write(msg).unwrap(); //todo handle error
-            loop {
-                let result = reader.read_line();
-                match result {
-                    Ok(data) => {
-                        let text = data;
-                        tx.send(LocalMessage::Network(text.unwrap()));
-                    },
-                    Err(e) => {
-                        //println!("Failed to recv data: {}", e);
-                    }
-                }
+    //let msg = b"hello, world";
+    //stream.write(msg).unwrap(); //todo handle error
+    loop {
+        let result = reader.read_line();
+        match result {
+            Ok(data) => {
+                let text = data;
+                tx.send(LocalMessage::Network(text.unwrap()));
+            },
+            Err(e) => {
+                //println!("Failed to recv data: {}", e);
             }
-        },
-        Err(e) => {
-            //println!("Failed to connect: {}", e);
         }
     }
 }
 
-fn run_network_thread(tx: std::sync::mpsc::Sender<LocalMessage>) {
-    std::thread::spawn(move || {
-        run_network(tx);
-    });
-}
-
-fn run_input_thread(tx: std::sync::mpsc::Sender<LocalMessage>) {
-    std::thread::spawn(move || {
-        process_input(tx);
-    });
-}
-
 fn main() {
-    let (tx, rx): (std::sync::mpsc::Sender<LocalMessage>, std::sync::mpsc::Receiver<LocalMessage>) = std::sync::mpsc::channel();
-    let (tx2, rx2): (std::sync::mpsc::Sender<String>, std::sync::mpsc::Receiver<String>) = std::sync::mpsc::channel();
+    let stream = TcpStream::connect("127.0.0.1:2345").unwrap();
+    let other_stream = stream.try_clone().unwrap();
     
-    run_network_thread(tx.clone());
-    run_input_thread(tx.clone());
-    run_gui(rx, tx2);
+    let (tx, rx): (std::sync::mpsc::Sender<LocalMessage>, std::sync::mpsc::Receiver<LocalMessage>) = std::sync::mpsc::channel();
+    
+    //run_network_thread(tx.clone(), stream);
+    let net_tx = tx.clone();
+    let input_tx = tx.clone();
+    std::thread::spawn(move || {
+        run_network(net_tx, stream);
+    });
+    std::thread::spawn(move || {
+        process_input(input_tx);
+    });
+    run_gui(rx, other_stream);
     
 }
