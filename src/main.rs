@@ -27,13 +27,24 @@ struct Message {
 //    time: chrono::DateTime,
 }
 
-fn draw_messages<W: Write>(screen: &mut W, messages: &Vec<Message>) {
+fn draw_messages<W: Write>(screen: &mut W, messages: &Vec<Message>, scroll: usize) {
+    let (width, height) = termion::terminal_size().unwrap();
+    let max_messages = height as usize - 3;
+    let len = messages.len();
+    let start_idx = len as isize - max_messages as isize + scroll as isize;
+    let start_idx = if start_idx < 0 { 0 } else { start_idx as usize };
     write!(screen, "{}#general", termion::cursor::Goto(2, 5)).unwrap();
     
     let mut line = 2;
-    for message in messages.iter() {
-        write!(screen, "{}{}{}", termion::cursor::Goto(28, line), message.content, "").unwrap();
-        line += 1;
+    for message in messages[start_idx..len + scroll].iter() {
+
+        let max_chars: usize = width as usize - 28;
+        let num_lines: usize = (message.content.len() as f64 / max_chars as f64).ceil() as usize;
+        for i in 0..num_lines {
+            let e = if (i + 1) * max_chars >= message.content.len() { message.content.len() - 1 } else { (i + 1) * max_chars };
+            write!(screen, "{}{}{}", termion::cursor::Goto(28, line), &message.content[i * max_chars..e], "").unwrap();
+            line += 1;
+        }
     }
 }
 
@@ -67,7 +78,7 @@ fn draw_screen<W: Write>(screen: &mut W, mode: u8, messages: &Vec<Message>, buff
     
     if mode == SERVER_MODE {
         draw_border(screen);
-        draw_messages(screen, messages);
+        draw_messages(screen, messages, 0);
         write!(screen, "{}{}", termion::cursor::Goto(28, height - 1), buffer);
     }
 }
