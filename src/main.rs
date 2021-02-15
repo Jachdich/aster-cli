@@ -41,7 +41,7 @@ fn draw_messages<W: Write>(screen: &mut W, messages: &Vec<Message>, scroll: usiz
         let max_chars: usize = width as usize - 28;
         let num_lines: usize = (message.content.len() as f64 / max_chars as f64).ceil() as usize;
         for i in 0..num_lines {
-            let e = if (i + 1) * max_chars >= message.content.len() { message.content.len() - 1 } else { (i + 1) * max_chars };
+            let e = if (i + 1) * max_chars >= message.content.len() { message.content.len() } else { (i + 1) * max_chars };
             write!(screen, "{}{}{}", termion::cursor::Goto(28, line), &message.content[i * max_chars..e], "").unwrap();
             line += 1;
         }
@@ -160,7 +160,7 @@ fn run_network(tx: std::sync::mpsc::Sender<LocalMessage>, stream: TcpStream) {
 }
 
 fn main() {
-    let stream = TcpStream::connect("127.0.0.1:2345").unwrap();
+    let stream = TcpStream::connect("cospox.com:2345").unwrap();
     let other_stream = stream.try_clone().unwrap();
     
     let (tx, rx): (std::sync::mpsc::Sender<LocalMessage>, std::sync::mpsc::Receiver<LocalMessage>) = std::sync::mpsc::channel();
