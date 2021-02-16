@@ -87,11 +87,19 @@ fn run_gui(rx: std::sync::mpsc::Receiver<LocalMessage>, mut stream: TcpStream) {
     let mut buffer: String = "".to_string();
     
 	let mut screen = termion::screen::AlternateScreen::from(stdout).into_raw_mode().unwrap();
+    //let mut screen = stdout;
     draw_screen(&mut screen, SERVER_MODE, &loaded_messages, &buffer);
     screen.flush().unwrap();
+    let mut waiting_for_messages = 50;
+    let mut requested_messages = false;
     loop {
         write!(screen, "{}{}", termion::cursor::Goto(1, 1), termion::clear::CurrentLine).unwrap();
-	    
+
+        if waiting_for_messages > 0 && !requested_messages {
+            stream.write(format!("/history {} {}\n", 0, waiting_for_messages).as_bytes()).unwrap();
+            requested_messages = true;
+        }
+	      
 	    match rx.recv().unwrap() {
 	        LocalMessage::Keyboard(key) => {
 	            match key {
@@ -113,7 +121,13 @@ fn run_gui(rx: std::sync::mpsc::Receiver<LocalMessage>, mut stream: TcpStream) {
 	        },
 
 	        LocalMessage::Network(msg) => {
-	            loaded_messages.push(Message{content: msg});
+	            if waiting_for_messages > 0 {
+	                loaded_messages.insert(0, Message{content: msg});
+	                waiting_for_messages -= 1;
+	                if waiting_for_messages == 0 { requested_messages = false; }
+	            } else {
+	                loaded_messages.push(Message{content: msg});
+	            }
 	        },
 	    }
 	    draw_screen(&mut screen, SERVER_MODE, &loaded_messages, &buffer);
@@ -139,6 +153,7 @@ fn run_network(tx: std::sync::mpsc::Sender<LocalMessage>, stream: TcpStream) {
         match result {
             Ok(data) => {
                 let text = data;
+                //tell GUI that message has been recv'd
                 tx.send(LocalMessage::Network(text.unwrap()));
             },
             Err(e) => {
