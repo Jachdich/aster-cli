@@ -105,7 +105,7 @@ fn run_gui(rx: std::sync::mpsc::Receiver<LocalMessage>, mut stream: TcpStream) {
     
 	let mut screen = termion::input::MouseTerminal::from(stdout).into_raw_mode().unwrap();
     //let mut screen = stdout;
-    //draw_screen(&mut screen, SERVER_MODE, &loaded_messages, &buffer, 0);
+    draw_screen(&mut screen, SERVER_MODE, &loaded_messages, &buffer, 0);
     screen.flush().unwrap();
     let mut waiting_for_messages = 50;
     let mut requested_messages = false;
