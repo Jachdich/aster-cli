@@ -218,7 +218,7 @@ fn run_network(tx: std::sync::mpsc::Sender<LocalMessage>, stream: TcpStream) {
 }
 
 fn main() {
-    let stream = TcpStream::connect("127.0.0.1:2345").unwrap();
+    let stream = TcpStream::connect("cospox.com:2345").unwrap();
     let other_stream = stream.try_clone().unwrap();
     
     let (tx, rx): (std::sync::mpsc::Sender<LocalMessage>, std::sync::mpsc::Receiver<LocalMessage>) = std::sync::mpsc::channel();
