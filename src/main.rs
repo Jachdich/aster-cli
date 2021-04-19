@@ -1,9 +1,13 @@
-use openssl::ssl::{SslMethod, SslConnector, SslVerifyMode};
 use std::io::BufReader;
-use std::str::from_utf8;
-use std::net::TcpStream;
 extern crate termion;
 extern crate tokio;
+use native_tls::TlsConnector;
+use tokio_native_tls::TlsStream;
+use std::net::ToSocketAddrs;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::TcpStream;
+use tokio::io::{ReadHalf, WriteHalf};
+use crate::tokio::io::AsyncBufReadExt;
 
 use termion::raw::IntoRawMode;
 use termion::event::{Key, MouseEvent, Event, MouseButton};
@@ -97,7 +101,7 @@ fn process_input(tx: std::sync::mpsc::Sender<LocalMessage>) {
     }
 }
 
-fn run_gui(rx: std::sync::mpsc::Receiver<LocalMessage>, mut stream: TcpStream) {
+fn run_gui(rx: std::sync::mpsc::Receiver<LocalMessage>, mut stream: WriteHalf<TlsStream<TcpStream>>) {
     let stdout = stdout().into_raw_mode().unwrap();
 
     let mut loaded_messages: Vec<Message> = Vec::new();
@@ -107,18 +111,16 @@ fn run_gui(rx: std::sync::mpsc::Receiver<LocalMessage>, mut stream: TcpStream) {
     //let mut screen = stdout;
     draw_screen(&mut screen, SERVER_MODE, &loaded_messages, &buffer, 0);
     screen.flush().unwrap();
-    let mut waiting_for_messages = 50;
-    let mut requested_messages = false;
     let mut scroll: isize = 0;
-    let mut uname = format!("{}", stream.local_addr().unwrap());
-    stream.write(format!("/nick {}\n", uname).as_bytes()).unwrap();
+    let mut uname: String = "e".to_string();
+    //stream.write(format!("/login {}\n", uname).as_bytes()).unwrap();
     loop {
         write!(screen, "{}{}", termion::cursor::Goto(1, 1), termion::clear::CurrentLine).unwrap();
 
-        if waiting_for_messages > 0 && !requested_messages {
-            stream.write(format!("/history {} {}\n", 0, waiting_for_messages).as_bytes()).unwrap();
-            requested_messages = true;
-        }
+        //if waiting_for_messages > 0 && !requested_messages {
+            //stream.write(format!("/history {} {}\n", 0, waiting_for_messages).as_bytes()).unwrap();
+            //requested_messages = true;
+        //}
 	      
 	    match rx.recv().unwrap() {
 	        LocalMessage::Keyboard(key) => {
@@ -135,8 +137,6 @@ fn run_gui(rx: std::sync::mpsc::Receiver<LocalMessage>, mut stream: TcpStream) {
                                 }
 
                                 "/join" => {
-                                    requested_messages = false;
-                                    waiting_for_messages = 50;
                                     loaded_messages.clear();
                                 }
                                 _ => {}
@@ -170,13 +170,7 @@ fn run_gui(rx: std::sync::mpsc::Receiver<LocalMessage>, mut stream: TcpStream) {
 	        },
 
 	        LocalMessage::Network(msg) => {
-	            if waiting_for_messages > 0 {
-	                loaded_messages.insert(loaded_messages.len(), Message{content: msg});
-	                waiting_for_messages -= 1;
-	                if waiting_for_messages == 0 { requested_messages = false; }
-	            } else {
-	                loaded_messages.push(Message{content: msg});
-	            }
+	            loaded_messages.push(Message{content: msg});
 	        },
 	    }
 	    scroll = draw_screen(&mut screen, SERVER_MODE, &loaded_messages, &buffer, scroll);
@@ -184,42 +178,38 @@ fn run_gui(rx: std::sync::mpsc::Receiver<LocalMessage>, mut stream: TcpStream) {
 	}
 }
 
-fn run_network(tx: std::sync::mpsc::Sender<LocalMessage>, stream: TcpStream) {
+async fn run_network(tx: std::sync::mpsc::Sender<LocalMessage>, mut stream: ReadHalf<TlsStream<TcpStream>>) {
+    let mut reader = tokio::io::BufReader::new(stream);
 
-    let mut connector = SslConnector::builder(SslMethod::tls())
-        .unwrap();
-    connector.set_verify(SslVerifyMode::NONE);
-    let connector = connector.build();
-
-    let mut reader = BufReader::new(stream);
-    
-    //let mut sslstream = connector.connect("127.0.0.1", stream).unwrap();
-
-    //let msg = b"hello, world";
-    //stream.write(msg).unwrap(); //todo handle error
     loop {
-        let result = reader.read_line();
-        match result {
-            Ok(data) => {
-                match data {
-                    Some(text) => {
-                        //tell GUI that message has been recv'd
-                        tx.send(LocalMessage::Network(text));
-                    }
+        let mut result: String = "".to_string();
+        match reader.read_line(&mut result).await {
+        	Ok(len) => {
+        		tx.send(LocalMessage::Network(result));
+        	}
 
-                    None => {}
-                }
-            },
-            Err(e) => {
-                //println!("Failed to recv data: {}", e);
-            }
+        	Err(..) => {
+        		
+        	}
         }
+        //tell GUI that message has been recv'd
     }
 }
 
-fn main() {
-    let stream = TcpStream::connect("cospox.com:2345").unwrap();
-    let other_stream = stream.try_clone().unwrap();
+#[tokio::main]
+async fn main() {
+//    let addr = "cospox.com:2345"
+	let addr = "127.0.0.1:2345"
+        .to_socket_addrs().unwrap()
+        .next()
+        .ok_or("failed to resolve hostname").unwrap();
+
+    let socket = TcpStream::connect(&addr).await.unwrap();
+    let cx = TlsConnector::builder().danger_accept_invalid_certs(true).build().unwrap();
+    let cx = tokio_native_tls::TlsConnector::from(cx);
+
+    let mut socket = cx.connect(/*"cospox.com"*/"127.0.0.1", socket).await.unwrap();
+    let (mut readHalf, mut writeHalf) = tokio::io::split(socket);
     
     let (tx, rx): (std::sync::mpsc::Sender<LocalMessage>, std::sync::mpsc::Receiver<LocalMessage>) = std::sync::mpsc::channel();
     
@@ -227,11 +217,11 @@ fn main() {
     let net_tx = tx.clone();
     let input_tx = tx.clone();
     std::thread::spawn(move || {
-        run_network(net_tx, stream);
+        run_network(net_tx, readHalf);
     });
     std::thread::spawn(move || {
         process_input(input_tx);
     });
-    run_gui(rx, other_stream);
+    run_gui(rx, writeHalf);
     
 }
