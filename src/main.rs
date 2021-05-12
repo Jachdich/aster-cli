@@ -13,16 +13,37 @@ use termion::event::{Key, MouseEvent, Event, MouseButton};
 use std::io::{Write, stdout, stdin};
 use crate::termion::input::TermRead;
 
+use std::collections::HashMap;
+
 const SERVER_MODE: u8 = 0;
 
 fn centred(text: &str, width: usize) -> String {
     format!("{: ^1$}", text, width)
 }
 
+#[derive(Debug)]
 struct User {
     nick: String,
     passwd: String,
     pfp_b64: String,
+    uuid: u64,
+}
+
+impl User {
+    fn from_json(val: &json::JsonValue) -> Self {
+        User {
+            nick: val["name"].to_string(),
+            passwd: "".to_string(),
+            pfp_b64: val["pfp_b64"].to_string(),
+            uuid: val["uuid"].as_u64().unwrap(),
+        }
+    }
+
+    fn update(&mut self, val: &json::JsonValue) {
+        self.nick = val["name"].to_string();
+        self.pfp_b64 = val["pfp_b64"].to_string();
+        self.uuid = val["uuid"].as_u64().unwrap();
+    }
 }
 
 struct Message {
@@ -124,7 +145,7 @@ fn draw_screen<W: Write>(screen: &mut W, mode: u8, servers: &Vec<Server>, curr_s
             scroll = draw_messages(screen, &servers[curr_server].loaded_messages, scroll);
             draw_servers(screen, servers, curr_server);
         }
-        write!(screen, "{}{}", termion::cursor::Goto(28, height - 1), buffer);
+        write!(screen, "{}{}", termion::cursor::Goto(28, height - 1), buffer).unwrap();
     }
     scroll
 }
@@ -133,7 +154,7 @@ fn process_input(tx: std::sync::mpsc::Sender<LocalMessage>) {
     let stdin = stdin();
 
     for event in stdin.events() {
-        tx.send(LocalMessage::Keyboard(event.as_ref().unwrap().clone()));
+        tx.send(LocalMessage::Keyboard(event.as_ref().unwrap().clone())).unwrap();
     }
 }
 
@@ -188,8 +209,15 @@ impl GUI {
         match key {
              Event::Key(Key::Ctrl('c')) => return false,
              Event::Key(Key::Ctrl('n')) => {
-                //self.servers.push(Server::new());
-                    
+                self.servers.push(Server::new("127.0.0.1".to_string(), 2345, 0, self.servers.len(), self.tx.clone()).await);
+                let res = self.servers.last_mut().unwrap().initialise().await;
+                match res {
+                    Ok(()) => {},
+                    Err(error) => {
+                        self.servers[self.curr_server].loaded_messages.push(
+                        Message { content: format!("{:?}", error) } );
+                    }
+                }
              }
              Event::Key(Key::Char('\n')) => {
                 if self.buffer.len() == 0 {
@@ -210,10 +238,23 @@ impl GUI {
                     }
                 }
 
-                self.servers[self.curr_server].net.write_half.write(self.buffer.as_bytes()).await;
-                self.servers[self.curr_server].net.write_half.write(b"\n").await;
-                self.servers[self.curr_server].loaded_messages.push(Message{content: format!("{}: {}", self.config["uname"].to_string(), self.buffer)});
-                self.buffer = "".to_string();
+                let res = self.servers[self.curr_server].net.write_half.write(format!("{}\n", self.buffer).as_bytes()).await;
+                match res {
+                    Ok(_) => {
+                        self.servers[self.curr_server].loaded_messages.push(
+                            Message {
+                                content: format!("{}: {}", self.config["uname"].to_string(), self.buffer)
+                        });
+                        self.buffer = "".to_string();
+                    }
+                    Err(error) => {
+                        self.servers[self.curr_server].loaded_messages.push(
+                            Message {
+                                content: format!("{}: {:?}", self.config["uname"].to_string(), error)
+                        });
+                    }
+                }
+                
             }
 
             Event::Key(Key::Char(ch)) => {
@@ -238,10 +279,34 @@ impl GUI {
     }
 
     fn handle_network_packet(&mut self, obj: json::JsonValue, serv: usize) {
+        let s = &mut self.servers[serv];
         if !obj["content"].is_null() {
-            self.servers[serv].loaded_messages.push(
+            let nick = s.peers[&obj["author_uuid"].as_u64().unwrap()].nick.clone();
+            //let nick = format!("{:?}", s.peers[&obj["author_uuid"].as_u64().unwrap()]);
+            s.loaded_messages.push(
             Message{
-                content: "".to_string(),//format!("{}: {}", obj["content"].to_string(), self.servers[serv].peers[,
+                content: format!("{}: {}",
+                    nick,
+                    obj["content"].to_string()),
+            });
+        } else if !obj["command"].is_null() {
+            match obj["command"].to_string().as_str() {
+                "metadata" => {
+                    for elem in obj["data"].members() {
+                        let elem_uuid = elem["uuid"].as_u64().unwrap();
+                        if !s.peers.contains_key(&elem_uuid) {
+                            s.peers.insert(elem_uuid, User::from_json(elem));
+                        } else {
+                            s.peers.get_mut(&elem_uuid).unwrap().update(elem);
+                        }
+                    }
+                },
+                _ => ()
+            }
+        } else {
+            s.loaded_messages.push(
+            Message{
+                content: format!("DEBUG: {}", obj.dump()),
             });
         }
     }
@@ -298,75 +363,46 @@ struct Server {
     ip: String,
     name: String,
     channels: Vec<String>,
-    peers: Vec<User>,
-    curr_uuid: u64,
+    peers: HashMap<u64, User>,
+    uuid: u64,
     net: ServerNetwork,
-    idx: usize,
 }
 
 impl Server {
-    fn from_known(ip: String, port: u16, name: String, uuid: u64, idx: usize, tx: std::sync::mpsc::Sender<LocalMessage>) -> Self {
-        let mut net: ServerNetwork = futures::executor::block_on(ServerNetwork::new(&ip, port, tx, idx));
-        net.write_half.write(format!("/login {}", uuid).to_bytes());
-        net.write_half.write(b"/get_icon");
-        net.write_half.write(b"/get_name");
-        net.write_half.write(b"/get_all_metadata");
-        net.write_half.write(b"/get_channels");
-        net.write_half.write(b"/online");
-        
-        Server{
-            loaded_messages: Vec::new(),
-            ip,
-            name,
-            channels: Vec::new(),
-            curr_uuid: uuid,
-            net,
-            idx,
-        }
-    }
+    async fn new(ip: String, port: u16, uuid: u64, idx: usize, tx: std::sync::mpsc::Sender<LocalMessage>) -> Self {
+        let net: ServerNetwork = ServerNetwork::new(&ip, port, tx, idx).await;
 
-    fn from_unknown(ip: String, port: u16, idx: usize, tx: std::sync::mpsc::Sender<LocalMessage>) -> Self {
-        let mut net: ServerNetwork = futures::executor::block_on(ServerNetwork::new(&ip, port, tx, idx));
-        net.write_half.write(b"/register");
-        net.write_half.write(b"/get_icon");
-        net.write_half.write(b"/get_name");
-        net.write_half.write(b"/get_all_metadata");
-        net.write_half.write(b"/get_channels");
-        net.write_half.write(b"/online");
-        
         Server{
             loaded_messages: Vec::new(),
             ip,
             name: "".to_string(),
             channels: Vec::new(),
-            curr_uuid: 0,
+            peers: HashMap::new(),
+            uuid,
             net,
-            idx,
         }
     }
 
-    fn from_uuid(ip: String, port: u16, uuid: u64, idx: usize, tx: std::sync::mpsc::Sender<LocalMessage>) -> Self {
-        let mut net: ServerNetwork = futures::executor::block_on(ServerNetwork::new(&ip, port, tx, idx));
-        net.write_half.write(format!("/login {}", uuid).to_bytes());
-        net.write_half.write(b"/get_icon");
-        net.write_half.write(b"/get_name");
-        net.write_half.write(b"/get_all_metadata");
-        net.write_half.write(b"/get_channels");
-        net.write_half.write(b"/online");
-        
-        Server{
-            loaded_messages: Vec::new(),
-            ip,
-            name: "".to_string(),
-            channels: Vec::new(),
-            curr_uuid: uuid,
-            net,
-            idx,
-        }
+
+    async fn update_metadata(&mut self, meta: User) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        self.net.write_half.write(format!("/nick {}\n", meta.nick).as_bytes()).await?;
+        self.net.write_half.write(format!("/passwd {}\n", meta.passwd).as_bytes()).await?;
+        self.net.write_half.write(format!("/pfp {}\n", meta.pfp_b64).as_bytes()).await?;
+        Ok(())
     }
 
-    fn update_metadata(&self, meta: User) {
-        
+    async fn initialise(&mut self) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        if self.uuid == 0 {
+            self.net.write_half.write(b"/register\n").await?;
+        } else {
+            self.net.write_half.write(format!("/login {}\n", self.uuid).as_bytes()).await?;
+        }
+        self.net.write_half.write(b"/get_icon\n").await?;
+        self.net.write_half.write(b"/get_name\n").await?;
+        self.net.write_half.write(b"/get_all_metadata\n").await?;
+        self.net.write_half.write(b"/get_channels\n").await?;
+        self.net.write_half.write(b"/online\n").await?;
+        Ok(())
     }
 }
 
@@ -402,7 +438,7 @@ impl ServerNetwork {
             let mut result: String = "".to_string();
             match reader.read_line(&mut result).await {
             	Ok(_len) => {
-      	            tx.send(LocalMessage::Network(result, idx));
+      	            tx.send(LocalMessage::Network(result, idx)).unwrap();
       	        }
     
             	Err(..) => {
