@@ -97,6 +97,8 @@ fn draw_messages<W: Write>(screen: &mut W, messages: &Vec<Message>, mut scroll: 
 
     let mut line = total_lines as u16;
 
+    let mut buffer: String = "".to_string();
+
     for message in messages[(start_idx as isize + scroll) as usize..(len as isize + scroll) as usize].iter() {
 
         let num_lines: usize = (message.content.len() as f64 / max_chars as f64).ceil() as usize;
@@ -106,10 +108,11 @@ fn draw_messages<W: Write>(screen: &mut W, messages: &Vec<Message>, mut scroll: 
                 continue;
             }
             let e = if (i + 1) * max_chars >= message.content.len() { message.content.len() } else { (i + 1) * max_chars };
-            write!(screen, "{}{}{}", termion::cursor::Goto(28, height - line - 1), &message.content[i * max_chars..e], "").unwrap();
+            buffer.push_str(&format!("{}{}{}", termion::cursor::Goto(28, height - line - 1), &message.content[i * max_chars..e], ""));
             line -= 1;
         }
     }
+    write!(screen, "{}", buffer).unwrap();
     scroll
 }
 
@@ -126,15 +129,17 @@ fn draw_border<W: Write>(screen: &mut W) {
     }
     let server_string = centred("cospox.com", LEFT_MARGIN);
     let space_padding = " ".repeat(width as usize - LEFT_MARGIN - 3);
-    write!(screen, "{}{}", termion::cursor::Goto(1, 1), termion::clear::All).unwrap();
-    write!(screen, "┏{}┳{}┓\r\n", "━".repeat(LEFT_MARGIN), "━".repeat(width as usize - LEFT_MARGIN - 3)).unwrap();
-    write!(screen, "┃{}┃{}┃\r\n", centred("Connected to", LEFT_MARGIN), space_padding).unwrap();
-    write!(screen, "┃{}┃{}┃\r\n", server_string, space_padding).unwrap();
-    write!(screen, "┣{}┫{}┃\r\n", "━".repeat(LEFT_MARGIN), space_padding).unwrap();
-    write!(screen, "{}", format!("┃{}┃{}┃\r\n", " ".repeat(LEFT_MARGIN), space_padding).repeat(channels_height)).unwrap();
-    write!(screen, "┣{}┫{}┃\r\n", "━".repeat(LEFT_MARGIN), space_padding).unwrap();
-    write!(screen, "{}", format!("┃{}┃{}┃\r\n", " ".repeat(LEFT_MARGIN), space_padding).repeat(servers_height)).unwrap();
-    write!(screen, "┗{}┻{}┛", "━".repeat(LEFT_MARGIN), "━".repeat(width as usize - LEFT_MARGIN - 3)).unwrap();
+    write!(screen, "{}{}┏{}┳{}┓\r\n┃{}┃{}┃\r\n┃{}┃{}┃\r\n┣{}┫{}┃\r\n{}┣{}┫{}┃\r\n{}┗{}┻{}┛",
+        termion::cursor::Goto(1, 1), termion::clear::All,
+        "━".repeat(LEFT_MARGIN), "━".repeat(width as usize - LEFT_MARGIN - 3),
+        centred("Connected to", LEFT_MARGIN), space_padding,
+        server_string, space_padding,
+        "━".repeat(LEFT_MARGIN), space_padding,
+        format!("┃{}┃{}┃\r\n", " ".repeat(LEFT_MARGIN), space_padding).repeat(channels_height),
+        "━".repeat(LEFT_MARGIN), space_padding,
+        format!("┃{}┃{}┃\r\n", " ".repeat(LEFT_MARGIN), space_padding).repeat(servers_height),
+        "━".repeat(LEFT_MARGIN), "━".repeat(width as usize - LEFT_MARGIN - 3),
+    ).unwrap();
 
 }
 
@@ -406,9 +411,7 @@ impl GUI {
         draw_screen(&mut screen, SERVER_MODE, &Vec::new(), 0, &self.buffer, 0);
         screen.flush().unwrap();
 
-        loop {
-            write!(screen, "{}{}", termion::cursor::Goto(1, 1), termion::clear::All).unwrap();
-    	      
+        loop {   	      
     	    match self.rx.recv().unwrap() {
     	        LocalMessage::Keyboard(key) => {
     	            if !self.handle_keyboard(key).await {
