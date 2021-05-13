@@ -89,30 +89,29 @@ fn draw_messages<W: Write>(screen: &mut W, messages: &Vec<Message>, mut scroll: 
     if scroll > 0 { scroll = 0; }
     if (scroll + start_idx as isize) < 0 { scroll = 0 - start_idx as isize; }
     
-    let mut line = 2;
-    /*
-    for message in messages[(start_idx as isize + scroll) as usize..(len as isize + scroll) as usize].iter() {
 
-        let max_chars: usize = width as usize - LEFT_MARGIN - 3;
-        let num_lines: usize = (message.content.len() as f64 / max_chars as f64).ceil() as usize;
-        for i in 0..num_lines {
-            let e = if (i + 1) * max_chars >= message.content.len() { message.content.len() } else { (i + 1) * max_chars };
-            write!(screen, "{}{}{}", termion::cursor::Goto(28, line), &message.content[i * max_chars..e], "").unwrap();
-            line += 1;
-        }
-    }*/
-
-    for message in messages {
-
-        let max_chars: usize = width as usize - LEFT_MARGIN - 3;
-        let num_lines: usize = (message.content.len() as f64 / max_chars as f64).ceil() as usize;
-        for i in 0..num_lines {
-            let e = if (i + 1) * max_chars >= message.content.len() { message.content.len() } else { (i + 1) * max_chars };
-            write!(screen, "{}{}{}", termion::cursor::Goto(28, line), &message.content[i * max_chars..e], "").unwrap();
-            line += 1;
-        }
+    let mut total_lines = 0;
+    let max_chars: usize = width as usize - LEFT_MARGIN - 4;
+    let max_lines = height - 2;
+    for msg in messages[(start_idx as isize + scroll) as usize..(len as isize + scroll) as usize].iter() {
+        total_lines += (msg.content.len() as f64 / max_chars as f64).ceil() as usize;
     }
 
+    let mut line = total_lines as u16;
+
+    for message in messages[(start_idx as isize + scroll) as usize..(len as isize + scroll) as usize].iter() {
+
+        let num_lines: usize = (message.content.len() as f64 / max_chars as f64).ceil() as usize;
+        for i in 0..num_lines {
+            if line >= max_lines {
+                line -= 1;
+                continue;
+            }
+            let e = if (i + 1) * max_chars >= message.content.len() { message.content.len() } else { (i + 1) * max_chars };
+            write!(screen, "{}{}{}", termion::cursor::Goto(28, height - line - 1), &message.content[i * max_chars..e], "").unwrap();
+            line -= 1;
+        }
+    }
     scroll
 }
 
