@@ -15,7 +15,13 @@ use crate::termion::input::TermRead;
 
 use std::collections::HashMap;
 
-const SERVER_MODE: u8 = 0;
+#[derive(Clone, Copy)]
+enum Mode {
+    NewServer,
+    Messages,
+    Settings,
+}
+
 const LEFT_MARGIN: usize = 24;
 
 fn centred(text: &str, width: usize) -> String {
@@ -56,12 +62,6 @@ struct Message {
 fn draw_servers<W: Write>(screen: &mut W, servers: &Vec<Server>, curr_server: usize) {
     let (_width, height) = termion::terminal_size().unwrap();
     let list_height: u16 = height as u16 - 5;
-    let servers_height: u16;
-    if list_height % 2 == 0 {
-        servers_height = list_height / 2 - 1;
-    } else {
-        servers_height = list_height / 2;
-    }
 
     let mut vert_pos = 5;
     for channel in &servers[curr_server].channels {
@@ -69,17 +69,27 @@ fn draw_servers<W: Write>(screen: &mut W, servers: &Vec<Server>, curr_server: us
         vert_pos += 1;
         //TODO scrolling
     }
-    vert_pos = servers_height + 6;
+    vert_pos = list_height / 2 + 6;
+    let mut idx = 0;
     for server in servers {
-        write!(screen, "{}{}", termion::cursor::Goto(2, vert_pos), server.name).unwrap();
+        write!(screen, "{}{}{}{}{}{}",
+            termion::cursor::Goto(2, vert_pos),
+            //TODO this forces 24 bitcolour support when it doesn't really need it
+            if idx == curr_server { termion::color::Bg(termion::color::Rgb(64, 64, 64)).to_string() } else { termion::color::Bg(termion::color::Reset).to_string() },
+            if server.net.is_none() { termion::color::Fg(termion::color::Rgb(255, 0, 0)) } else { termion::color::Fg(termion::color::Rgb(0, 255, 0)) },
+            server.name,
+            termion::color::Fg(termion::color::Reset),
+            termion::color::Bg(termion::color::Reset),
+            ).unwrap();
         vert_pos += 1;
+        idx += 1;
     }
 }
 
 fn draw_messages<W: Write>(screen: &mut W, messages: &Vec<Message>, mut scroll: isize) -> isize {
     let (width, height) = termion::terminal_size().unwrap();
     let max_messages = height as usize - 3;
-    let mut len = messages.len();
+    let len = messages.len();
 
     let start_idx = len as isize - max_messages as isize + scroll as isize;
     let start_idx = if start_idx < 0 { 0 } else { start_idx as usize };
@@ -148,21 +158,29 @@ enum LocalMessage {
     Network(String, usize),
 }
 
-fn draw_screen<W: Write>(screen: &mut W, mode: u8, servers: &Vec<Server>, curr_server: usize, buffer: &String, mut scroll: isize) -> isize {
+fn draw_screen<W: Write>(screen: &mut W, mode: Mode, servers: &Vec<Server>, curr_server: usize, buffer: &String, mut scroll: isize) -> isize {
     let (width, height) = termion::terminal_size().unwrap();
 
     if width < 32 || height < 8 {
         write!(screen, "Terminal size is too small lol").unwrap();
         return scroll;
     }
-    
-    if mode == SERVER_MODE {
-        draw_border(screen);
-        if servers.len() > 0 {
-            scroll = draw_messages(screen, &servers[curr_server].loaded_messages, scroll);
-            draw_servers(screen, servers, curr_server);
+
+    match mode {
+        Mode::Messages => {
+            draw_border(screen);
+            if servers.len() > 0 {
+                scroll = draw_messages(screen, &servers[curr_server].loaded_messages, scroll);
+                draw_servers(screen, servers, curr_server);
+            }
+            write!(screen, "{}{}", termion::cursor::Goto(28, height - 1), buffer).unwrap();
         }
-        write!(screen, "{}{}", termion::cursor::Goto(28, height - 1), buffer).unwrap();
+        Mode::NewServer => {
+            
+        }
+        Mode::Settings => {
+            
+        }
     }
     scroll
 }
@@ -183,6 +201,7 @@ struct GUI {
     config: json::JsonValue,
     servers: Vec<Server>,
     curr_server: usize,
+    mode: Mode,
 }
 
 impl GUI {
@@ -241,6 +260,7 @@ impl GUI {
             config,
             servers,
             curr_server: 0,
+            mode: Mode::Messages,
         }
     }
     
@@ -280,7 +300,7 @@ impl GUI {
                     Err(error) => {
                         self.servers[self.curr_server].loaded_messages.push(
                             Message {
-                                content: format!("{}: {:?}", self.config["uname"].to_string(), error)
+                                content: format!("ERROR: {:?}", error)
                         });
                     }
                 }
@@ -408,7 +428,7 @@ impl GUI {
         let stdout = stdout().into_raw_mode().unwrap();
         //let mut screen = stdout();
     	let mut screen = termion::input::MouseTerminal::from(stdout).into_raw_mode().unwrap();
-        draw_screen(&mut screen, SERVER_MODE, &Vec::new(), 0, &self.buffer, 0);
+        draw_screen(&mut screen, self.mode, &Vec::new(), 0, &self.buffer, 0);
         screen.flush().unwrap();
 
         loop {   	      
@@ -432,7 +452,7 @@ impl GUI {
        	            }
     	        }
     	    }
-    	    self.message_scroll = draw_screen(&mut screen, SERVER_MODE, &self.servers, self.curr_server, &self.buffer, self.message_scroll);
+    	    self.message_scroll = draw_screen(&mut screen, self.mode, &self.servers, self.curr_server, &self.buffer, self.message_scroll);
     	    screen.flush().unwrap();
     	}
     }
