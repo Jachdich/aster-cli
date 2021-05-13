@@ -486,7 +486,7 @@ impl GUI {
             });
         }
     }
-        
+
     fn save_config(&mut self) {
         //TODO unwraps BADE
         self.config["servers"] = json::array![];
