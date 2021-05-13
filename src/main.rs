@@ -16,6 +16,7 @@ use crate::termion::input::TermRead;
 use std::collections::HashMap;
 
 const SERVER_MODE: u8 = 0;
+const LEFT_MARGIN: usize = 24;
 
 fn centred(text: &str, width: usize) -> String {
     format!("{: ^1$}", text, width)
@@ -78,7 +79,10 @@ fn draw_servers<W: Write>(screen: &mut W, servers: &Vec<Server>, curr_server: us
 fn draw_messages<W: Write>(screen: &mut W, messages: &Vec<Message>, mut scroll: isize) -> isize {
     let (width, height) = termion::terminal_size().unwrap();
     let max_messages = height as usize - 3;
-    let len = messages.len();
+    let mut len = messages.len();
+    //for msg in messages {
+    //    len += 1 + msg.content.len() / (width - LEFT_MARGIN as u16 - 3 /*for right border*/) as usize;
+    //}
     let start_idx = len as isize - max_messages as isize + scroll as isize;
     let start_idx = if start_idx < 0 { 0 } else { start_idx as usize };
 
@@ -86,9 +90,21 @@ fn draw_messages<W: Write>(screen: &mut W, messages: &Vec<Message>, mut scroll: 
     if (scroll + start_idx as isize) < 0 { scroll = 0 - start_idx as isize; }
     
     let mut line = 2;
+    /*
     for message in messages[(start_idx as isize + scroll) as usize..(len as isize + scroll) as usize].iter() {
 
-        let max_chars: usize = width as usize - 28;
+        let max_chars: usize = width as usize - LEFT_MARGIN - 3;
+        let num_lines: usize = (message.content.len() as f64 / max_chars as f64).ceil() as usize;
+        for i in 0..num_lines {
+            let e = if (i + 1) * max_chars >= message.content.len() { message.content.len() } else { (i + 1) * max_chars };
+            write!(screen, "{}{}{}", termion::cursor::Goto(28, line), &message.content[i * max_chars..e], "").unwrap();
+            line += 1;
+        }
+    }*/
+
+    for message in messages {
+
+        let max_chars: usize = width as usize - LEFT_MARGIN - 3;
         let num_lines: usize = (message.content.len() as f64 / max_chars as f64).ceil() as usize;
         for i in 0..num_lines {
             let e = if (i + 1) * max_chars >= message.content.len() { message.content.len() } else { (i + 1) * max_chars };
@@ -103,7 +119,6 @@ fn draw_messages<W: Write>(screen: &mut W, messages: &Vec<Message>, mut scroll: 
 
 fn draw_border<W: Write>(screen: &mut W) {
     let (width, height) = termion::terminal_size().unwrap();
-    let left_margin: usize = 24;
     let list_height: usize = height as usize - 5;
     let channels_height: usize = list_height / 2;
     let servers_height: usize;
@@ -112,17 +127,17 @@ fn draw_border<W: Write>(screen: &mut W) {
     } else {
         servers_height = list_height / 2;
     }
-    let server_string = centred("cospox.com", left_margin);
-    let space_padding = " ".repeat(width as usize - left_margin - 3);
+    let server_string = centred("cospox.com", LEFT_MARGIN);
+    let space_padding = " ".repeat(width as usize - LEFT_MARGIN - 3);
     write!(screen, "{}{}", termion::cursor::Goto(1, 1), termion::clear::All).unwrap();
-    write!(screen, "┏{}┳{}┓\r\n", "━".repeat(left_margin), "━".repeat(width as usize - left_margin - 3)).unwrap();
-    write!(screen, "┃{}┃{}┃\r\n", centred("Connected to", left_margin), space_padding).unwrap();
+    write!(screen, "┏{}┳{}┓\r\n", "━".repeat(LEFT_MARGIN), "━".repeat(width as usize - LEFT_MARGIN - 3)).unwrap();
+    write!(screen, "┃{}┃{}┃\r\n", centred("Connected to", LEFT_MARGIN), space_padding).unwrap();
     write!(screen, "┃{}┃{}┃\r\n", server_string, space_padding).unwrap();
-    write!(screen, "┣{}┫{}┃\r\n", "━".repeat(left_margin), space_padding).unwrap();
-    write!(screen, "{}", format!("┃{}┃{}┃\r\n", " ".repeat(left_margin), space_padding).repeat(channels_height)).unwrap();
-    write!(screen, "┣{}┫{}┃\r\n", "━".repeat(left_margin), space_padding).unwrap();
-    write!(screen, "{}", format!("┃{}┃{}┃\r\n", " ".repeat(left_margin), space_padding).repeat(servers_height)).unwrap();
-    write!(screen, "┗{}┻{}┛", "━".repeat(left_margin), "━".repeat(width as usize - left_margin - 3)).unwrap();
+    write!(screen, "┣{}┫{}┃\r\n", "━".repeat(LEFT_MARGIN), space_padding).unwrap();
+    write!(screen, "{}", format!("┃{}┃{}┃\r\n", " ".repeat(LEFT_MARGIN), space_padding).repeat(channels_height)).unwrap();
+    write!(screen, "┣{}┫{}┃\r\n", "━".repeat(LEFT_MARGIN), space_padding).unwrap();
+    write!(screen, "{}", format!("┃{}┃{}┃\r\n", " ".repeat(LEFT_MARGIN), space_padding).repeat(servers_height)).unwrap();
+    write!(screen, "┗{}┻{}┛", "━".repeat(LEFT_MARGIN), "━".repeat(width as usize - LEFT_MARGIN - 3)).unwrap();
 
 }
 
@@ -170,7 +185,7 @@ struct GUI {
 
 impl GUI {
     
-    fn new(tx: std::sync::mpsc::Sender<LocalMessage>, rx: std::sync::mpsc::Receiver<LocalMessage>) -> Self {
+    async fn new(tx: std::sync::mpsc::Sender<LocalMessage>, rx: std::sync::mpsc::Receiver<LocalMessage>) -> Self {
         let default_config: json::JsonValue = json::object!{
             servers: [],
             uname: "",
@@ -194,13 +209,35 @@ impl GUI {
                 config = default_config;
             }
         }
+
+        let mut servers: Vec<Server> = Vec::new();
+
+        for serv in config["servers"].members() {
+            let conn = Server::new(serv["ip"].to_string(), serv["port"].as_u16().unwrap(), serv["uuid"].as_u64().unwrap(), servers.len(), tx.clone()).await;
+            match conn {
+                Ok(mut conn) => {
+                    let res = conn.initialise().await;
+                    match res {
+                        Ok(()) => {
+                            servers.push(conn);
+                        },
+                        Err(_error) => {
+                            servers.push(Server::offline(serv["ip"].to_string(), serv["port"].as_u16().unwrap(), serv["name"].to_string(), serv["uuid"].as_u64().unwrap()));
+                        }
+                    }
+                },
+                Err(_error) => {
+                    servers.push(Server::offline(serv["ip"].to_string(), serv["port"].as_u16().unwrap(), serv["name"].to_string(), serv["uuid"].as_u64().unwrap()));
+                }
+            }
+        }
         GUI {
             message_scroll: 0,
             buffer: "".to_string(),
             tx,
             rx,
             config,
-            servers: Vec::new(),
+            servers,
             curr_server: 0,
         }
     }
@@ -209,15 +246,6 @@ impl GUI {
         match key {
              Event::Key(Key::Ctrl('c')) => return false,
              Event::Key(Key::Ctrl('n')) => {
-                self.servers.push(Server::new("127.0.0.1".to_string(), 2345, 0, self.servers.len(), self.tx.clone()).await);
-                let res = self.servers.last_mut().unwrap().initialise().await;
-                match res {
-                    Ok(()) => {},
-                    Err(error) => {
-                        self.servers[self.curr_server].loaded_messages.push(
-                        Message { content: format!("{:?}", error) } );
-                    }
-                }
              }
              Event::Key(Key::Char('\n')) => {
                 if self.buffer.len() == 0 {
@@ -238,7 +266,7 @@ impl GUI {
                     }
                 }
 
-                let res = self.servers[self.curr_server].net.write_half.write(format!("{}\n", self.buffer).as_bytes()).await;
+                let res = self.servers[self.curr_server].write(format!("{}\n", self.buffer).as_bytes()).await;
                 match res {
                     Ok(_) => {
                         self.servers[self.curr_server].loaded_messages.push(
@@ -301,6 +329,26 @@ impl GUI {
                         }
                     }
                 },
+                "set" => {
+                    match obj["key"].to_string().as_str() {
+                        "self_uuid" => {
+                            s.uuid = obj["value"].as_u64().unwrap();
+                        }
+                        _ => ()
+                    }
+                },/*
+                "get_icon" => {
+                    s.icon*/
+                "get_name" => {
+                    s.name = obj["data"].to_string();
+                },
+                
+                "get_channels" => {
+                    s.channels.clear();
+                    for elem in obj["data"].members() {
+                        s.channels.push(elem.to_string());
+                    }
+                }
                 _ => ()
             }
         } else {
@@ -311,8 +359,38 @@ impl GUI {
         }
     }
 
-    fn save_config(&self) {
+
+       /*
+        } else if (msg["command"].get<std::string>() == "get_name") {
+            name = msg["data"].get<std::string>();
+        } else if (msg["command"].get<std::string>() == "get_channels") {
+            for (auto &elem : msg["data"]) {
+                addChannel(elem.get<std::string>());
+            }
+        } else if (msg["command"].get<std::string>() == "unread") {
+        	std::string channel = msg["channel"].get<std::string>();
+        	for (QLabel* l : channelWidgets) { //TODO really inefficient lol
+        		if (l->text().toUtf8().constData() == channel) {
+        			l->setProperty("unread", true);
+    				l->style()->polish(l);
+        		}
+        	}
+        } else if (msg["command"].get<std::string>() == "online") {
+            online->clear();
+            for (auto &elem : msg["data"]) {
+                if (peers.count(elem.get<uint64_t>()) == 0) continue;
+                Metadata &m = peers[elem.get<uint64_t>()];
+                online->addProfile(new SmallProfile(QString::fromStdString(m.uname), m.pfp));
+            }
+        }*/
+
+        
+    fn save_config(&mut self) {
         //TODO unwraps BADE
+        self.config["servers"] = json::array![];
+        for server in &self.servers {
+            self.config["servers"].push(server.to_json()).unwrap();
+        }
         let mut file = std::fs::File::create("preferences.json").unwrap();
         file.write_all(self.config.dump().as_bytes()).unwrap();
     }
@@ -354,67 +432,98 @@ impl GUI {
 }
 
 struct ServerNetwork {
-    tx: std::sync::mpsc::Sender<LocalMessage>,
     write_half: WriteHalf<TlsStream<TcpStream>>,
 }
 
 struct Server {
     loaded_messages: Vec<Message>,
     ip: String,
+    port: u16,
     name: String,
     channels: Vec<String>,
     peers: HashMap<u64, User>,
     uuid: u64,
-    net: ServerNetwork,
+    net: std::option::Option<ServerNetwork>,
 }
 
 impl Server {
-    async fn new(ip: String, port: u16, uuid: u64, idx: usize, tx: std::sync::mpsc::Sender<LocalMessage>) -> Self {
-        let net: ServerNetwork = ServerNetwork::new(&ip, port, tx, idx).await;
-
-        Server{
+    async fn new(ip: String, port: u16, uuid: u64, idx: usize, tx: std::sync::mpsc::Sender<LocalMessage>) -> std::result::Result<Self, Box<dyn std::error::Error>> {
+        let net: ServerNetwork = ServerNetwork::new(&ip, port, tx, idx).await?;
+        Ok(Server{
             loaded_messages: Vec::new(),
             ip,
+            port,
             name: "".to_string(),
             channels: Vec::new(),
             peers: HashMap::new(),
             uuid,
-            net,
+            net: Some(net),
+        })
+    }
+
+    fn offline(ip: String, port: u16, name: String, uuid: u64) -> Self {
+        Server{
+            loaded_messages: Vec::new(),
+            ip,
+            port,
+            name: name,
+            channels: Vec::new(),
+            peers: HashMap::new(),
+            uuid,
+            net: None,
         }
     }
 
+    async fn write(&mut self, data: &[u8]) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        match self.net.as_mut() {
+            Some(net) => {
+                net.write_half.write(data).await?;
+                Ok(())
+            },
+            None => Err(Box::new(std::io::Error::new(std::io::ErrorKind::NotConnected, "Server is offline"))),
+        }
+    }
 
     async fn update_metadata(&mut self, meta: User) -> std::result::Result<(), Box<dyn std::error::Error>> {
-        self.net.write_half.write(format!("/nick {}\n", meta.nick).as_bytes()).await?;
-        self.net.write_half.write(format!("/passwd {}\n", meta.passwd).as_bytes()).await?;
-        self.net.write_half.write(format!("/pfp {}\n", meta.pfp_b64).as_bytes()).await?;
+        self.write(format!("/nick {}\n", meta.nick).as_bytes()).await?;
+        self.write(format!("/passwd {}\n", meta.passwd).as_bytes()).await?;
+        self.write(format!("/pfp {}\n", meta.pfp_b64).as_bytes()).await?;
         Ok(())
     }
 
     async fn initialise(&mut self) -> std::result::Result<(), Box<dyn std::error::Error>> {
         if self.uuid == 0 {
-            self.net.write_half.write(b"/register\n").await?;
+            self.write(b"/register\n").await?;
         } else {
-            self.net.write_half.write(format!("/login {}\n", self.uuid).as_bytes()).await?;
+            self.write(format!("/login {}\n", self.uuid).as_bytes()).await?;
         }
-        self.net.write_half.write(b"/get_icon\n").await?;
-        self.net.write_half.write(b"/get_name\n").await?;
-        self.net.write_half.write(b"/get_all_metadata\n").await?;
-        self.net.write_half.write(b"/get_channels\n").await?;
-        self.net.write_half.write(b"/online\n").await?;
+        self.write(b"/get_icon\n").await?;
+        self.write(b"/get_name\n").await?;
+        self.write(b"/get_all_metadata\n").await?;
+        self.write(b"/get_channels\n").await?;
+        self.write(b"/online\n").await?;
         Ok(())
+    }
+
+    fn to_json(&self) -> json::JsonValue {
+        json::object!{
+            name: self.name.clone(),
+            ip: self.ip.clone(),
+            port: self.port,
+            uuid: self.uuid,
+        }
     }
 }
 
 impl ServerNetwork {
-    async fn new(ip: &str, port: u16, tx: std::sync::mpsc::Sender<LocalMessage>, idx: usize) -> Self {
+    async fn new(ip: &str, port: u16, tx: std::sync::mpsc::Sender<LocalMessage>, idx: usize) -> std::result::Result<Self, Box<dyn std::error::Error>> {
         let addr = format!("{}:{}", ip, port)
             .to_socket_addrs().unwrap()
             .next()
-            .ok_or("failed to resolve hostname").unwrap();
+            .ok_or("failed to resolve hostname")?;
 
-        let socket = TcpStream::connect(&addr).await.unwrap();
-        let cx = TlsConnector::builder().danger_accept_invalid_certs(true).build().unwrap();
+        let socket = TcpStream::connect(&addr).await?;
+        let cx = TlsConnector::builder().danger_accept_invalid_certs(true).build()?;
         let cx = tokio_native_tls::TlsConnector::from(cx);
 
         let socket = cx.connect(ip, socket).await.unwrap();
@@ -425,10 +534,9 @@ impl ServerNetwork {
             futures::executor::block_on(ServerNetwork::run_network(net_tx, read_half, idx));
         });
 
-        ServerNetwork {
-            tx,
+        Ok(ServerNetwork {
             write_half,
-        }
+        })
     }
 
     async fn run_network(tx: std::sync::mpsc::Sender<LocalMessage>, stream: ReadHalf<TlsStream<TcpStream>>, idx: usize) {
@@ -457,6 +565,6 @@ async fn main() {
     std::thread::spawn(move || {
         process_input(input_tx);
     });
-    let mut gui = GUI::new(tx, rx);
+    let mut gui = GUI::new(tx, rx).await;
     gui.run_gui().await;
 }
