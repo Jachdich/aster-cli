@@ -22,6 +22,14 @@ enum Mode {
     Settings,
 }
 
+#[derive(Clone, Copy)]
+enum Focus {
+    ServerList,
+    ChannelList,
+    Edit,
+    Messages,
+}
+
 const LEFT_MARGIN: usize = 24;
 
 fn centred(text: &str, width: usize) -> String {
@@ -59,28 +67,46 @@ struct Message {
 //    time: chrono::DateTime,
 }
 
-fn draw_servers<W: Write>(screen: &mut W, servers: &Vec<Server>, curr_server: usize) {
+fn draw_servers<W: Write>(screen: &mut W, servers: &Vec<Server>, curr_server: usize, curr_channel: usize) {
     let (_width, height) = termion::terminal_size().unwrap();
     let list_height: u16 = height as u16 - 5;
 
     let mut vert_pos = 5;
+    let mut idx = 0;
     for channel in &servers[curr_server].channels {
-        write!(screen, "{}#{}", termion::cursor::Goto(2, vert_pos), channel).unwrap();
+        write!(screen, "{}{}{}{}{}",
+            termion::cursor::Goto(2, vert_pos),
+
+            if idx == curr_channel { termion::color::Bg(termion::color::Blue).to_string() }
+            else { termion::color::Bg(termion::color::Reset).to_string() },
+            
+            channel,
+            " ".repeat(LEFT_MARGIN - channel.len()),
+            
+            termion::color::Bg(termion::color::Reset),
+        ).unwrap();
         vert_pos += 1;
+        idx += 1;
         //TODO scrolling
     }
     vert_pos = list_height / 2 + 6;
-    let mut idx = 0;
+    idx = 0;
     for server in servers {
-        write!(screen, "{}{}{}{}{}{}",
+        write!(screen, "{}{}{}{}{}{}{}",
             termion::cursor::Goto(2, vert_pos),
-            //TODO this forces 24 bitcolour support when it doesn't really need it
-            if idx == curr_server { termion::color::Bg(termion::color::Rgb(64, 64, 64)).to_string() } else { termion::color::Bg(termion::color::Reset).to_string() },
-            if server.net.is_none() { termion::color::Fg(termion::color::Rgb(255, 0, 0)) } else { termion::color::Fg(termion::color::Rgb(0, 255, 0)) },
+
+            if idx == curr_server { termion::color::Bg(termion::color::Blue).to_string() }
+            else { termion::color::Bg(termion::color::Reset).to_string() },
+            
+            if server.net.is_none() { termion::color::Fg(termion::color::Red).to_string() }
+            else { termion::color::Fg(termion::color::Reset).to_string() },
+            
             server.name,
+            " ".repeat(LEFT_MARGIN - server.name.len()),
+            
             termion::color::Fg(termion::color::Reset),
             termion::color::Bg(termion::color::Reset),
-            ).unwrap();
+        ).unwrap();
         vert_pos += 1;
         idx += 1;
     }
@@ -95,7 +121,11 @@ fn draw_messages<W: Write>(screen: &mut W, messages: &Vec<Message>, mut scroll: 
     let start_idx = if start_idx < 0 { 0 } else { start_idx as usize };
 
     if scroll > 0 { scroll = 0; }
-    if (scroll + start_idx as isize) < 0 { scroll = 0 - start_idx as isize; }
+    if (scroll + start_idx as isize) <= 0 { scroll = 0 - start_idx as isize; }
+
+    //LOL not a good idea but it works
+    let start_idx = len as isize - max_messages as isize + scroll as isize;
+    let start_idx = if start_idx < 0 { 0 } else { start_idx as usize };
     
 
     let mut total_lines = 0;
@@ -158,7 +188,7 @@ enum LocalMessage {
     Network(String, usize),
 }
 
-fn draw_screen<W: Write>(screen: &mut W, mode: Mode, servers: &Vec<Server>, curr_server: usize, buffer: &String, mut scroll: isize) -> isize {
+fn draw_screen<W: Write>(screen: &mut W, mode: Mode, servers: &Vec<Server>, curr_server: usize, buffer: &String, mut scroll: isize, curr_channel: usize) -> isize {
     let (width, height) = termion::terminal_size().unwrap();
 
     if width < 32 || height < 8 {
@@ -171,7 +201,7 @@ fn draw_screen<W: Write>(screen: &mut W, mode: Mode, servers: &Vec<Server>, curr
             draw_border(screen);
             if servers.len() > 0 {
                 scroll = draw_messages(screen, &servers[curr_server].loaded_messages, scroll);
-                draw_servers(screen, servers, curr_server);
+                draw_servers(screen, servers, curr_server, curr_channel);
             }
             write!(screen, "{}{}", termion::cursor::Goto(28, height - 1), buffer).unwrap();
         }
@@ -202,6 +232,7 @@ struct GUI {
     servers: Vec<Server>,
     curr_server: usize,
     mode: Mode,
+    focus: Focus,
 }
 
 impl GUI {
@@ -261,31 +292,34 @@ impl GUI {
             servers,
             curr_server: 0,
             mode: Mode::Messages,
+            focus: Focus::Edit,
         }
     }
-    
-    async fn handle_keyboard(&mut self, key: Event) -> bool {
-        match key {
-             Event::Key(Key::Ctrl('c')) => return false,
-             Event::Key(Key::Ctrl('n')) => {
-             }
-             Event::Key(Key::Char('\n')) => {
-                if self.buffer.len() == 0 {
-                    return true;
-                }
-                if self.buffer.chars().nth(0).unwrap() == '/' {
-                    let split = self.buffer.split(" ");
-                    let argv = split.collect::<Vec<&str>>();
-                    match argv[0] {
-                        "/nick" => {
-                            self.config["uname"] = argv[1].into();
-                        }
 
-                        "/join" => {
-                            self.servers[self.curr_server].loaded_messages.clear();
-                        }
-                        _ => {}
-                    }
+    async fn handle_send_command(&mut self, cmd: String) {
+        let argv = cmd.split(" ").collect::<Vec<&str>>();
+        match argv[0] {
+            "/nick" => {
+                self.config["uname"] = argv[1].into();
+            }
+
+            "/join" => {
+                self.servers[self.curr_server].loaded_messages.clear();
+                //It is possible that this unwrap fails due to the time interval since it was last checked. fuck it I cba
+                self.servers[self.curr_server].write(b"/history 100\n").await.unwrap();
+                self.servers[self.curr_server].curr_channel = 
+                    self.servers[self.curr_server].channels.iter().position(|r| r == argv[1]).unwrap();
+                    //shitty inefficient code lol
+            }
+            _ => {}
+        }
+    }
+
+    async fn focus_edit_event(&mut self, event: Event) {
+        match event {
+            Event::Key(Key::Char('\n')) => {
+                if self.buffer.len() == 0 {
+                    return;
                 }
 
                 let res = self.servers[self.curr_server].write(format!("{}\n", self.buffer).as_bytes()).await;
@@ -295,6 +329,9 @@ impl GUI {
                             Message {
                                 content: format!("{}: {}", self.config["uname"].to_string(), self.buffer)
                         });
+                        if self.buffer.chars().nth(0).unwrap() == '/' {
+                            self.handle_send_command(self.buffer.clone()).await;
+                        }
                         self.buffer = "".to_string();
                     }
                     Err(error) => {
@@ -308,7 +345,7 @@ impl GUI {
             }
 
             Event::Key(Key::Char(ch)) => {
-                self.buffer.push(ch); 
+                self.buffer.push(ch);
             }
 
             Event::Key(Key::Backspace) => {
@@ -322,8 +359,70 @@ impl GUI {
             Event::Mouse(MouseEvent::Press(MouseButton::WheelDown, _, _)) => {
                 self.message_scroll += 1;
             }
-         
+
+            _ => ()
+        }
+    }
+    
+    async fn focus_servers_event(&mut self, event: Event) {
+        match event {
+            Event::Key(Key::Up) => {
+                if self.curr_server > 0 {
+                    self.curr_server -= 1;
+                }
+            }
+
+            Event::Key(Key::Down) => {
+                if self.curr_server < self.servers.len() - 1 {
+                    self.curr_server += 1;
+                }
+            }
             _ => (),
+        }
+    }
+
+    async fn focus_channels_event(&mut self, event: Event) {
+        let s = &mut self.servers[self.curr_server];
+        match event {
+            Event::Key(Key::Up) => {
+                if s.curr_channel > 0 {
+                    s.curr_channel -= 1;
+                }
+            }
+
+            Event::Key(Key::Down) => {
+                if s.curr_channel < s.channels.len() - 1 {
+                    s.curr_channel += 1;
+                }
+            }
+            _ => (),
+        }
+        s.write(format!("/join {}\n", s.channels[s.curr_channel]).as_bytes()).await;
+        let cmd = format!("/join {}", s.channels[s.curr_channel]);
+        self.handle_send_command(cmd).await;
+    }
+
+    async fn handle_keyboard(&mut self, key: Event) -> bool {
+        match key.clone() {
+             Event::Key(Key::Ctrl('c')) => return false,
+             Event::Key(Key::Ctrl('n')) => {
+             }
+             Event::Key(Key::Alt('c')) => {
+                self.focus = Focus::ChannelList;
+             }
+             Event::Key(Key::Alt('s')) => {
+                self.focus = Focus::ServerList;
+             }
+             Event::Key(Key::Alt('e')) => {
+                self.focus = Focus::Edit;
+             }
+            _ => (),
+         }
+         match self.focus {
+            Focus::Edit        => self.focus_edit_event(key.clone()).await,
+            Focus::ServerList  => self.focus_servers_event(key.clone()).await,
+            Focus::ChannelList => self.focus_channels_event(key.clone()).await,
+            Focus::Messages => (),
          }
          true
     }
@@ -387,32 +486,6 @@ impl GUI {
             });
         }
     }
-
-
-       /*
-        } else if (msg["command"].get<std::string>() == "get_name") {
-            name = msg["data"].get<std::string>();
-        } else if (msg["command"].get<std::string>() == "get_channels") {
-            for (auto &elem : msg["data"]) {
-                addChannel(elem.get<std::string>());
-            }
-        } else if (msg["command"].get<std::string>() == "unread") {
-        	std::string channel = msg["channel"].get<std::string>();
-        	for (QLabel* l : channelWidgets) { //TODO really inefficient lol
-        		if (l->text().toUtf8().constData() == channel) {
-        			l->setProperty("unread", true);
-    				l->style()->polish(l);
-        		}
-        	}
-        } else if (msg["command"].get<std::string>() == "online") {
-            online->clear();
-            for (auto &elem : msg["data"]) {
-                if (peers.count(elem.get<uint64_t>()) == 0) continue;
-                Metadata &m = peers[elem.get<uint64_t>()];
-                online->addProfile(new SmallProfile(QString::fromStdString(m.uname), m.pfp));
-            }
-        }*/
-
         
     fn save_config(&mut self) {
         //TODO unwraps BADE
@@ -428,7 +501,7 @@ impl GUI {
         let stdout = stdout().into_raw_mode().unwrap();
         //let mut screen = stdout();
     	let mut screen = termion::input::MouseTerminal::from(stdout).into_raw_mode().unwrap();
-        draw_screen(&mut screen, self.mode, &Vec::new(), 0, &self.buffer, 0);
+        draw_screen(&mut screen, self.mode, &Vec::new(), 0, &self.buffer, 0, 0);
         screen.flush().unwrap();
 
         loop {   	      
@@ -452,7 +525,7 @@ impl GUI {
        	            }
     	        }
     	    }
-    	    self.message_scroll = draw_screen(&mut screen, self.mode, &self.servers, self.curr_server, &self.buffer, self.message_scroll);
+    	    self.message_scroll = draw_screen(&mut screen, self.mode, &self.servers, self.curr_server, &self.buffer, self.message_scroll, self.servers[self.curr_server].curr_channel);
     	    screen.flush().unwrap();
     	}
     }
@@ -468,6 +541,7 @@ struct Server {
     port: u16,
     name: String,
     channels: Vec<String>,
+    curr_channel: usize,
     peers: HashMap<u64, User>,
     uuid: u64,
     net: std::option::Option<ServerNetwork>,
@@ -482,6 +556,7 @@ impl Server {
             port,
             name: "".to_string(),
             channels: Vec::new(),
+            curr_channel: 0,
             peers: HashMap::new(),
             uuid,
             net: Some(net),
@@ -495,6 +570,7 @@ impl Server {
             port,
             name: name,
             channels: Vec::new(),
+            curr_channel: 0,
             peers: HashMap::new(),
             uuid,
             net: None,
