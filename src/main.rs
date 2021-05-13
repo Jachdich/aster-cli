@@ -80,9 +80,7 @@ fn draw_messages<W: Write>(screen: &mut W, messages: &Vec<Message>, mut scroll: 
     let (width, height) = termion::terminal_size().unwrap();
     let max_messages = height as usize - 3;
     let mut len = messages.len();
-    //for msg in messages {
-    //    len += 1 + msg.content.len() / (width - LEFT_MARGIN as u16 - 3 /*for right border*/) as usize;
-    //}
+
     let start_idx = len as isize - max_messages as isize + scroll as isize;
     let start_idx = if start_idx < 0 { 0 } else { start_idx as usize };
 
@@ -347,8 +345,15 @@ impl GUI {
                     for elem in obj["data"].members() {
                         s.channels.push(elem.to_string());
                     }
-                }
+                },
                 _ => ()
+            }
+        } else if !obj["history"].is_null() {
+            for elem in obj["history"].members() {
+                s.loaded_messages.push(Message{
+                    content: format!("{}: {}", 
+                        s.peers[&elem["author_uuid"].as_u64().unwrap()].nick,
+                        elem["content"].to_string())});
             }
         } else {
             s.loaded_messages.push(
@@ -501,6 +506,7 @@ impl Server {
         self.write(b"/get_all_metadata\n").await?;
         self.write(b"/get_channels\n").await?;
         self.write(b"/online\n").await?;
+        self.write(b"/history 100\n").await?;
         Ok(())
     }
 
