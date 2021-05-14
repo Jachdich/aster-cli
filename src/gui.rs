@@ -9,6 +9,8 @@ extern crate termion;
 use termion::raw::IntoRawMode;
 use std::io::{Write, stdout};
 
+use crate::drawing::Theme;
+
 pub struct GUIBounds {
     pub left_margin: usize,
 }
@@ -25,6 +27,12 @@ pub struct GUI {
     pub focus: Focus,
     pub screen: termion::raw::RawTerminal<termion::input::MouseTerminal<std::io::Stdout>>,
     pub bounds: GUIBounds,
+    pub theme: Theme,
+
+    pub sel_idx: usize,
+    pub ip_buffer: String,
+    pub port_buffer: String,
+    pub uuid_buffer: String,
 }
 
 impl GUI {
@@ -91,6 +99,12 @@ impl GUI {
             focus: Focus::Edit,
             screen,
             bounds: GUIBounds { left_margin: 24 },
+            theme: Theme::new(),
+
+            sel_idx: 0,
+            ip_buffer: "".to_string(),
+            port_buffer: "".to_string(),
+            uuid_buffer: "".to_string(),
         }
     }
 

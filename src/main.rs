@@ -13,7 +13,7 @@ mod servernetwork;
 
 use gui::GUI;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub enum Mode {
     NewServer,
     Messages,
