@@ -67,153 +67,12 @@ struct Message {
 //    time: chrono::DateTime,
 }
 
-fn draw_servers<W: Write>(screen: &mut W, servers: &Vec<Server>, curr_server: usize, curr_channel: usize) {
-    let (_width, height) = termion::terminal_size().unwrap();
-    let list_height: u16 = height as u16 - 5;
-
-    let mut vert_pos = 5;
-    let mut idx = 0;
-    for channel in &servers[curr_server].channels {
-        write!(screen, "{}{}{}{}{}",
-            termion::cursor::Goto(2, vert_pos),
-
-            if idx == curr_channel { termion::color::Bg(termion::color::Blue).to_string() }
-            else { termion::color::Bg(termion::color::Reset).to_string() },
-            
-            channel,
-            " ".repeat(LEFT_MARGIN - channel.len()),
-            
-            termion::color::Bg(termion::color::Reset),
-        ).unwrap();
-        vert_pos += 1;
-        idx += 1;
-        //TODO scrolling
-    }
-    vert_pos = list_height / 2 + 6;
-    idx = 0;
-    for server in servers {
-        write!(screen, "{}{}{}{}{}{}{}",
-            termion::cursor::Goto(2, vert_pos),
-
-            if idx == curr_server { termion::color::Bg(termion::color::Blue).to_string() }
-            else { termion::color::Bg(termion::color::Reset).to_string() },
-            
-            if server.net.is_none() { termion::color::Fg(termion::color::Red).to_string() }
-            else { termion::color::Fg(termion::color::Reset).to_string() },
-            
-            server.name,
-            " ".repeat(LEFT_MARGIN - server.name.len()),
-            
-            termion::color::Fg(termion::color::Reset),
-            termion::color::Bg(termion::color::Reset),
-        ).unwrap();
-        vert_pos += 1;
-        idx += 1;
-    }
-}
-
-fn draw_messages<W: Write>(screen: &mut W, messages: &Vec<Message>, mut scroll: isize) -> isize {
-    let (width, height) = termion::terminal_size().unwrap();
-    let max_messages = height as usize - 3;
-    let len = messages.len();
-
-    let start_idx = len as isize - max_messages as isize + scroll as isize;
-    let start_idx = if start_idx < 0 { 0 } else { start_idx as usize };
-
-    if scroll > 0 { scroll = 0; }
-    if (scroll + start_idx as isize) <= 0 { scroll = 0 - start_idx as isize; }
-
-    //LOL not a good idea but it works
-    let start_idx = len as isize - max_messages as isize + scroll as isize;
-    let start_idx = if start_idx < 0 { 0 } else { start_idx as usize };
-    
-
-    let mut total_lines = 0;
-    let max_chars: usize = width as usize - LEFT_MARGIN - 4;
-    let max_lines = height - 2;
-    for msg in messages[(start_idx as isize + scroll) as usize..(len as isize + scroll) as usize].iter() {
-        total_lines += (msg.content.len() as f64 / max_chars as f64).ceil() as usize;
-    }
-
-    let mut line = total_lines as u16;
-
-    let mut buffer: String = "".to_string();
-
-    for message in messages[(start_idx as isize + scroll) as usize..(len as isize + scroll) as usize].iter() {
-
-        let num_lines: usize = (message.content.len() as f64 / max_chars as f64).ceil() as usize;
-        for i in 0..num_lines {
-            if line >= max_lines {
-                line -= 1;
-                continue;
-            }
-            let e = if (i + 1) * max_chars >= message.content.len() { message.content.len() } else { (i + 1) * max_chars };
-            buffer.push_str(&format!("{}{}{}", termion::cursor::Goto(28, height - line - 1), &message.content[i * max_chars..e], ""));
-            line -= 1;
-        }
-    }
-    write!(screen, "{}", buffer).unwrap();
-    scroll
-}
-
-
-fn draw_border<W: Write>(screen: &mut W) {
-    let (width, height) = termion::terminal_size().unwrap();
-    let list_height: usize = height as usize - 5;
-    let channels_height: usize = list_height / 2;
-    let servers_height: usize;
-    if list_height % 2 == 0 {
-        servers_height = list_height / 2 - 1;
-    } else {
-        servers_height = list_height / 2;
-    }
-    let server_string = centred("cospox.com", LEFT_MARGIN);
-    let space_padding = " ".repeat(width as usize - LEFT_MARGIN - 3);
-    write!(screen, "{}{}┏{}┳{}┓\r\n┃{}┃{}┃\r\n┃{}┃{}┃\r\n┣{}┫{}┃\r\n{}┣{}┫{}┃\r\n{}┗{}┻{}┛",
-        termion::cursor::Goto(1, 1), termion::clear::All,
-        "━".repeat(LEFT_MARGIN), "━".repeat(width as usize - LEFT_MARGIN - 3),
-        centred("Connected to", LEFT_MARGIN), space_padding,
-        server_string, space_padding,
-        "━".repeat(LEFT_MARGIN), space_padding,
-        format!("┃{}┃{}┃\r\n", " ".repeat(LEFT_MARGIN), space_padding).repeat(channels_height),
-        "━".repeat(LEFT_MARGIN), space_padding,
-        format!("┃{}┃{}┃\r\n", " ".repeat(LEFT_MARGIN), space_padding).repeat(servers_height),
-        "━".repeat(LEFT_MARGIN), "━".repeat(width as usize - LEFT_MARGIN - 3),
-    ).unwrap();
-
-}
-
 enum LocalMessage {
     Keyboard(Event),
     Network(String, usize),
 }
 
-fn draw_screen<W: Write>(screen: &mut W, mode: Mode, servers: &Vec<Server>, curr_server: usize, buffer: &String, mut scroll: isize, curr_channel: usize) -> isize {
-    let (width, height) = termion::terminal_size().unwrap();
 
-    if width < 32 || height < 8 {
-        write!(screen, "Terminal size is too small lol").unwrap();
-        return scroll;
-    }
-
-    match mode {
-        Mode::Messages => {
-            draw_border(screen);
-            if servers.len() > 0 {
-                scroll = draw_messages(screen, &servers[curr_server].loaded_messages, scroll);
-                draw_servers(screen, servers, curr_server, curr_channel);
-            }
-            write!(screen, "{}{}", termion::cursor::Goto(28, height - 1), buffer).unwrap();
-        }
-        Mode::NewServer => {
-            
-        }
-        Mode::Settings => {
-            
-        }
-    }
-    scroll
-}
 
 fn process_input(tx: std::sync::mpsc::Sender<LocalMessage>) {
     let stdin = stdin();
@@ -224,7 +83,7 @@ fn process_input(tx: std::sync::mpsc::Sender<LocalMessage>) {
 }
 
 struct GUI {
-    message_scroll: isize,
+    scroll: isize,
     buffer: String,
     tx: std::sync::mpsc::Sender<LocalMessage>,
     rx: std::sync::mpsc::Receiver<LocalMessage>,
@@ -233,10 +92,10 @@ struct GUI {
     curr_server: usize,
     mode: Mode,
     focus: Focus,
+    screen: termion::raw::RawTerminal<termion::input::MouseTerminal<std::io::Stdout>>,
 }
 
 impl GUI {
-    
     async fn new(tx: std::sync::mpsc::Sender<LocalMessage>, rx: std::sync::mpsc::Receiver<LocalMessage>) -> Self {
         let default_config: json::JsonValue = json::object!{
             servers: [],
@@ -283,8 +142,13 @@ impl GUI {
                 }
             }
         }
+
+        let stdout = stdout();
+        //let mut screen = stdout();
+    	let screen = termion::input::MouseTerminal::from(stdout).into_raw_mode().unwrap();
+    	
         GUI {
-            message_scroll: 0,
+            scroll: 0,
             buffer: "".to_string(),
             tx,
             rx,
@@ -293,6 +157,7 @@ impl GUI {
             curr_server: 0,
             mode: Mode::Messages,
             focus: Focus::Edit,
+            screen,
         }
     }
 
@@ -353,11 +218,11 @@ impl GUI {
             }
 
             Event::Mouse(MouseEvent::Press(MouseButton::WheelUp, _, _)) => {
-                self.message_scroll -= 1;
+                self.scroll -= 1;
             }
 
             Event::Mouse(MouseEvent::Press(MouseButton::WheelDown, _, _)) => {
-                self.message_scroll += 1;
+                self.scroll += 1;
             }
 
             _ => ()
@@ -498,11 +363,8 @@ impl GUI {
     }
 
     async fn run_gui(&mut self) {
-        let stdout = stdout().into_raw_mode().unwrap();
-        //let mut screen = stdout();
-    	let mut screen = termion::input::MouseTerminal::from(stdout).into_raw_mode().unwrap();
-        draw_screen(&mut screen, self.mode, &Vec::new(), 0, &self.buffer, 0, 0);
-        screen.flush().unwrap();
+        self.draw_screen();
+        self.screen.flush().unwrap();
 
         loop {   	      
     	    match self.rx.recv().unwrap() {
@@ -525,9 +387,152 @@ impl GUI {
        	            }
     	        }
     	    }
-    	    self.message_scroll = draw_screen(&mut screen, self.mode, &self.servers, self.curr_server, &self.buffer, self.message_scroll, self.servers[self.curr_server].curr_channel);
-    	    screen.flush().unwrap();
+    	    self.draw_screen();
+    	    self.screen.flush().unwrap();
     	}
+    }
+
+    fn draw_servers(&mut self) {
+        let (_width, height) = termion::terminal_size().unwrap();
+        let list_height: u16 = height as u16 - 5;
+    
+        let mut vert_pos = 5;
+        let mut idx = 0;
+        for channel in &self.servers[self.curr_server].channels {
+            write!(self.screen, "{}{}{}{}{}",
+                termion::cursor::Goto(2, vert_pos),
+    
+                if idx == self.servers[self.curr_server].curr_channel { termion::color::Bg(termion::color::Blue).to_string() }
+                else { termion::color::Bg(termion::color::Reset).to_string() },
+                
+                channel,
+                " ".repeat(LEFT_MARGIN - channel.len()),
+                
+                termion::color::Bg(termion::color::Reset),
+            ).unwrap();
+            vert_pos += 1;
+            idx += 1;
+            //TODO scrolling
+        }
+        vert_pos = list_height / 2 + 6;
+        idx = 0;
+        for server in &self.servers {
+            write!(self.screen, "{}{}{}{}{}{}{}",
+                termion::cursor::Goto(2, vert_pos),
+    
+                if idx == self.curr_server { termion::color::Bg(termion::color::Blue).to_string() }
+                else { termion::color::Bg(termion::color::Reset).to_string() },
+                
+                if server.net.is_none() { termion::color::Fg(termion::color::Red).to_string() }
+                else { termion::color::Fg(termion::color::Reset).to_string() },
+                
+                server.name,
+                " ".repeat(LEFT_MARGIN - server.name.len()),
+                
+                termion::color::Fg(termion::color::Reset),
+                termion::color::Bg(termion::color::Reset),
+            ).unwrap();
+            vert_pos += 1;
+            idx += 1;
+        }
+    }
+    
+    fn draw_messages(&mut self) {
+        let messages = &self.servers[self.curr_server].loaded_messages;
+        let (width, height) = termion::terminal_size().unwrap();
+        let max_messages = height as usize - 3;
+        let len = messages.len();
+    
+        let start_idx = len as isize - max_messages as isize + self.scroll as isize;
+        let start_idx = if start_idx < 0 { 0 } else { start_idx as usize };
+    
+        if self.scroll > 0 { self.scroll = 0; }
+        if (self.scroll + start_idx as isize) <= 0 { self.scroll = 0 - start_idx as isize; }
+    
+        //LOL not a good idea but it works
+        let start_idx = len as isize - max_messages as isize + self.scroll as isize;
+        let start_idx = if start_idx < 0 { 0 } else { start_idx as usize };
+        
+    
+        let mut total_lines = 0;
+        let max_chars: usize = width as usize - LEFT_MARGIN - 4;
+        let max_lines = height - 2;
+        for msg in messages[(start_idx as isize + self.scroll) as usize..(len as isize + self.scroll) as usize].iter() {
+            total_lines += (msg.content.len() as f64 / max_chars as f64).ceil() as usize;
+        }
+    
+        let mut line = total_lines as u16;
+    
+        let mut buffer: String = "".to_string();
+    
+        for message in messages[(start_idx as isize + self.scroll) as usize..(len as isize + self.scroll) as usize].iter() {
+    
+            let num_lines: usize = (message.content.len() as f64 / max_chars as f64).ceil() as usize;
+            for i in 0..num_lines {
+                if line >= max_lines {
+                    line -= 1;
+                    continue;
+                }
+                let e = if (i + 1) * max_chars >= message.content.len() { message.content.len() } else { (i + 1) * max_chars };
+                buffer.push_str(&format!("{}{}{}", termion::cursor::Goto(28, height - line - 1), &message.content[i * max_chars..e], ""));
+                line -= 1;
+            }
+        }
+        write!(self.screen, "{}", buffer).unwrap();
+    }
+    
+    
+    fn draw_border(&mut self) {
+        let (width, height) = termion::terminal_size().unwrap();
+        let list_height: usize = height as usize - 5;
+        let channels_height: usize = list_height / 2;
+        let servers_height: usize;
+        if list_height % 2 == 0 {
+            servers_height = list_height / 2 - 1;
+        } else {
+            servers_height = list_height / 2;
+        }
+        
+        let server_string = centred("cospox.com", LEFT_MARGIN);
+        let space_padding = " ".repeat(width as usize - LEFT_MARGIN - 3);
+        write!(self.screen, "{}{}┏{}┳{}┓\r\n┃{}┃{}┃\r\n┃{}┃{}┃\r\n┣{}┫{}┃\r\n{}┣{}┫{}┃\r\n{}┗{}┻{}┛",
+            termion::cursor::Goto(1, 1), termion::clear::All,
+            "━".repeat(LEFT_MARGIN), "━".repeat(width as usize - LEFT_MARGIN - 3),
+            centred("Connected to", LEFT_MARGIN), space_padding,
+            server_string, space_padding,
+            "━".repeat(LEFT_MARGIN), space_padding,
+            format!("┃{}┃{}┃\r\n", " ".repeat(LEFT_MARGIN), space_padding).repeat(channels_height),
+            "━".repeat(LEFT_MARGIN), space_padding,
+            format!("┃{}┃{}┃\r\n", " ".repeat(LEFT_MARGIN), space_padding).repeat(servers_height),
+            "━".repeat(LEFT_MARGIN), "━".repeat(width as usize - LEFT_MARGIN - 3),
+        ).unwrap();
+    
+    }
+    
+    fn draw_screen(&mut self)  {
+        let (width, height) = termion::terminal_size().unwrap();
+    
+        if width < 32 || height < 8 {
+            write!(self.screen, "Terminal size is too small lol").unwrap();
+            return;
+        }
+    
+        match self.mode {
+            Mode::Messages => {
+                self.draw_border();
+                if self.servers.len() > 0 {
+                    self.draw_messages();
+                    self.draw_servers();
+                }
+                write!(self.screen, "{}{}", termion::cursor::Goto(28, height - 1), self.buffer).unwrap();
+            }
+            Mode::NewServer => {
+                
+            }
+            Mode::Settings => {
+                
+            }
+        }
     }
 }
 
