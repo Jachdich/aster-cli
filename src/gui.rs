@@ -25,7 +25,7 @@ pub struct GUI {
     pub curr_server: usize,
     pub mode: Mode,
     pub focus: Focus,
-    pub screen: termion::raw::RawTerminal<termion::input::MouseTerminal<std::io::Stdout>>,
+    pub screen: std::io::Stdout, //termion::raw::RawTerminal<termion::input::MouseTerminal<std::io::Stdout>>,
     pub bounds: GUIBounds,
     pub theme: Theme,
 
@@ -83,9 +83,9 @@ impl GUI {
             }
         }
 
-        let stdout = stdout();
-        //let mut screen = stdout();
-    	let screen = termion::input::MouseTerminal::from(stdout).into_raw_mode().unwrap();
+        //let stdout = stdout();
+        let mut screen = stdout();
+    	//let screen = termion::input::MouseTerminal::from(stdout).into_raw_mode().unwrap();
     	
         GUI {
             scroll: 0,
@@ -131,13 +131,7 @@ impl GUI {
         let s = &mut self.servers[serv];
         if !obj["content"].is_null() {
             let nick = s.peers[&obj["author_uuid"].as_u64().unwrap()].nick.clone();
-            //let nick = format!("{:?}", s.peers[&obj["author_uuid"].as_u64().unwrap()]);
-            s.loaded_messages.push(
-            Message{
-                content: format!("{}: {}",
-                    nick,
-                    obj["content"].to_string()),
-            });
+            s.add_message(obj["content"].to_string(), nick);
         } else if !obj["command"].is_null() {
             match obj["command"].to_string().as_str() {
                 "metadata" => {
