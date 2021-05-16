@@ -1,5 +1,6 @@
 extern crate termion;
 extern crate tokio;
+extern crate dirs;
 use termion::event::Event;
 
 use std::io::stdin;

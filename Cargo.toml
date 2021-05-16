@@ -15,3 +15,4 @@ tokio-stream = { version = "*" }
 tokio-native-tls = "*"
 native-tls = "*"
 json = "*"
+dirs = "*"
