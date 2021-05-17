@@ -25,7 +25,7 @@ pub struct GUI {
     pub curr_server: usize,
     pub mode: Mode,
     pub focus: Focus,
-    pub screen: std::io::Stdout, //termion::raw::RawTerminal<termion::input::MouseTerminal<std::io::Stdout>>,
+    pub screen: termion::raw::RawTerminal<termion::input::MouseTerminal<std::io::Stdout>>,
     pub bounds: GUIBounds,
     pub theme: Theme,
 
@@ -83,9 +83,9 @@ impl GUI {
             }
         }
 
-        //let stdout = stdout();
-        let mut screen = stdout();
-    	//let screen = termion::input::MouseTerminal::from(stdout).into_raw_mode().unwrap();
+        let stdout = stdout();
+        //let mut screen = stdout();
+    	let screen = termion::input::MouseTerminal::from(stdout).into_raw_mode().unwrap();
     	
         GUI {
             scroll: 0,
