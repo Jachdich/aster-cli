@@ -28,6 +28,10 @@
 "edit": {
     "border-top": ["", "reset", "reset"],
     "border-bottom": ["", "reset", "reset"]
+},
+
+"messages": {
+    "border-left": ["", "reset", "reset"]
 }
 
 }
