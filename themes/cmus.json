@@ -1,0 +1,43 @@
+{
+"global": {
+    "text-foreground": "reset",
+    "text-background": "reset",
+    "selected-text-background": "blue",
+    "selected-text-foreground": "light yellow",
+    "unfocussed-selected-text-background": "white",
+    "unfocussed-selected-text-foreground": "light yellow",
+    "error-text-foreground": "reset",
+    "error-text-background": "red",
+
+    "system-message-foreground": "light green",
+    "system-message-background": "reset",
+    
+    "border-tl":           ["", "reset", "blue"],
+    "border-top":          [" ", "reset", "blue"],
+    "border-tr":           ["", "reset", "blue"],
+    "border-left":         ["", "reset", "reset"],
+    "border-bl":           ["", "reset", "blue"],
+    "border-br":           ["", "reset", "blue"],
+    "border-bottom":       [" ", "reset", "blue"],
+    "border-right":        ["", "reset", "reset"],
+    "border-bottom-split": [" ", "reset", "blue"],
+    "border-top-split":    [" ", "reset", "blue"],
+    "border-left-split":   ["", "reset", "blue"],
+    "border-right-split":  ["│", "blue", "reset"]
+},
+
+"servers": {
+    "border-right": ["│", "blue", "reset"],
+    "border-top": [" ", "reset", "blue"]
+},
+
+"edit": {
+    "border-top": ["", "reset", "reset"],
+    "border-bottom": ["", "reset", "reset"]
+},
+
+"channels": {
+    "border-bottom": ["", "reset", "reset"]
+}
+
+}
