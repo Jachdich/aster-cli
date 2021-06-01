@@ -43,7 +43,7 @@ impl Server {
         //todo compile regex once and use it mulyiple times, this is slow as fuck
         let url_regex = r#"^https?://(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)$"#;
         let compiled_regex = regex::Regex::new(url_regex).unwrap();
-        if compiled_regex.is_match(&obj["content"].to_string()) {
+        if compiled_regex.is_match(&content) {
             //this is gonna be fuckin rough... brace yourselves
         }
 
