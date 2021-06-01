@@ -15,7 +15,7 @@ pub struct ServerNetwork {
 impl ServerNetwork {
     pub async fn new(ip: &str, port: u16, tx: std::sync::mpsc::Sender<LocalMessage>, idx: usize) -> std::result::Result<Self, Box<dyn std::error::Error>> {
         let addr = format!("{}:{}", ip, port)
-            .to_socket_addrs().unwrap()
+            .to_socket_addrs()?
             .next()
             .ok_or("failed to resolve hostname")?;
 
@@ -23,7 +23,7 @@ impl ServerNetwork {
         let cx = TlsConnector::builder().danger_accept_invalid_certs(true).build()?;
         let cx = tokio_native_tls::TlsConnector::from(cx);
 
-        let socket = cx.connect(ip, socket).await.unwrap();
+        let socket = cx.connect(ip, socket).await?;
         let (read_half, write_half) = tokio::io::split(socket);
 
         let net_tx = tx.clone();

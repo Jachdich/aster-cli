@@ -11,10 +11,6 @@ use std::io::{Write, stdout};
 
 use crate::drawing::Theme;
 
-pub struct GUIBounds {
-    pub left_margin: usize,
-}
-
 pub struct GUI {
     pub scroll: isize,
     pub buffer: String,
@@ -25,8 +21,7 @@ pub struct GUI {
     pub curr_server: usize,
     pub mode: Mode,
     pub focus: Focus,
-    pub screen: std::io::Stdout, //termion::raw::RawTerminal<termion::input::MouseTerminal<std::io::Stdout>>,
-    pub bounds: GUIBounds,
+    pub screen: termion::raw::RawTerminal<termion::input::MouseTerminal<std::io::Stdout>>,
     pub theme: Theme,
 
     //TODO move to new struct?
@@ -87,9 +82,9 @@ impl GUI {
             }
         }
 
-        //let stdout = stdout();
-        let mut screen = stdout();
-    	//let screen = termion::input::MouseTerminal::from(stdout).into_raw_mode().unwrap();
+        let stdout = stdout();
+        //let mut screen = stdout();
+    	let screen = termion::input::MouseTerminal::from(stdout).into_raw_mode().unwrap();
     	
         GUI {
             scroll: 0,
@@ -102,8 +97,7 @@ impl GUI {
             mode: Mode::Messages,
             focus: Focus::Edit,
             screen,
-            bounds: GUIBounds { left_margin: 24 },
-            theme: Theme::new(),
+            theme: Theme::new("themes/default.json").unwrap(),
 
             sel_idx: 0,
             ip_buffer: "".to_string(),
@@ -112,11 +106,19 @@ impl GUI {
         }
     }
 
-    pub async fn handle_send_command(&mut self, cmd: String) {
+    pub fn send_system(&mut self, message: &str) {
+        self.servers[self.curr_server].loaded_messages.push(
+            Message {
+                content: format!("{}System{}: {}", self.theme.messages.system_message, self.theme.messages.text, message)
+        });
+    }
+
+    pub async fn handle_send_command(&mut self, cmd: String) -> bool {
         let argv = cmd.split(" ").collect::<Vec<&str>>();
         match argv[0] {
             "/nick" => {
                 self.config["uname"] = argv[1].into();
+                true
             }
 
             "/join" => {
@@ -126,8 +128,21 @@ impl GUI {
                 self.servers[self.curr_server].curr_channel = 
                     self.servers[self.curr_server].channels.iter().position(|r| r == argv[1]).unwrap();
                     //shitty inefficient code lol
+                true
             }
-            _ => {}
+            "/theme" => {
+                if argv.len() != 2 {
+                    self.send_system("Expected exactly one argument");
+                }
+                
+                match Theme::new(&format!("themes/{}.json", argv[1])) {
+                    Ok(theme) => { self.theme = theme; self.send_system(&format!("Changed theme to {}", argv[1])); },
+                    Err(_e) => self.send_system("Nonexistant or invalid theme provided"),
+                }
+                    
+                false
+            }
+            _ => true
         }
     }
 

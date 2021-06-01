@@ -13,24 +13,32 @@ impl GUI {
                     return;
                 }
 
-                let res = self.servers[self.curr_server].write(format!("{}\n", self.buffer).as_bytes()).await;
-                match res {
-                    Ok(_) => {
-                        self.servers[self.curr_server].loaded_messages.push(
-                            Message {
-                                content: format!("{}: {}", self.config["uname"].to_string(), self.buffer)
-                        });
-                        if self.buffer.chars().nth(0).unwrap() == '/' {
-                            self.handle_send_command(self.buffer.clone()).await;
+                let send_to_server: bool;
+                if self.buffer.chars().nth(0).unwrap() == '/' {
+                    send_to_server = self.handle_send_command(self.buffer.clone()).await;
+                } else {
+                    send_to_server = true;
+                }
+
+                if send_to_server {
+                    let res = self.servers[self.curr_server].write(format!("{}\n", self.buffer).as_bytes()).await;
+                    match res {
+                        Ok(_) => {
+                            self.servers[self.curr_server].loaded_messages.push(
+                                Message {
+                                    content: format!("{}: {}", self.config["uname"].to_string(), self.buffer)
+                            });
+                            self.buffer = "".to_string();
                         }
-                        self.buffer = "".to_string();
+                        Err(error) => {
+                            self.servers[self.curr_server].loaded_messages.push(
+                                Message {
+                                    content: format!("{}System{}: {}", self.theme.messages.system_message, self.theme.messages.text, error)
+                            });
+                        }
                     }
-                    Err(error) => {
-                        self.servers[self.curr_server].loaded_messages.push(
-                            Message {
-                                content: format!("ERROR: {:?}", error)
-                        });
-                    }
+                } else {
+                    self.buffer = "".to_string();
                 }
                 
             }
