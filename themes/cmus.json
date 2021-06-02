@@ -28,7 +28,7 @@
 
 "servers": {
     "border-right": ["│", "blue", "reset"],
-    "border-top": [" ", "reset", "blue"]
+    "border-top": ["", "reset", "blue"]
 },
 
 "edit": {

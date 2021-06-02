@@ -31,7 +31,11 @@
 },
 
 "messages": {
-    "border-left": ["", "reset", "reset"]
+    "border-left": ["┃", "reset", "reset"]
+},
+
+"servers": {
+    "border-top": ["-", "reset", "reset"]
 }
 
 }
