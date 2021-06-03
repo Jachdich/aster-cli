@@ -209,6 +209,18 @@ impl Theme {
                     - self.servers.border.bottom.width()) as usize
     }
 
+    fn get_servers_start_pos(&self) -> usize {
+        (self.channels.border.top.width()
+            + 2 + self.channels.border.bottom.width() * 2) as usize
+    }
+
+    fn get_channels_start_pos(&self, height: u16) -> usize {
+        self.get_servers_start_pos() as usize
+            + self.get_servers_height(height) as usize
+            + self.channels.border.bottom.width() as usize
+            + self.servers.border.top.width() as usize
+    }
+    
     fn get_servers_height(&self, height: u16) -> usize {
         let list_height = self.get_list_height(height);
         if list_height % 2 == 0 {
@@ -232,7 +244,7 @@ impl GUI {
         let (_width, height) = termion::terminal_size().unwrap();
         let list_height: u16 = self.theme.get_list_height(height) as u16;
     
-        let mut vert_pos = 100 - self.theme.get_list_height(100) as u16 + 3;
+        let mut vert_pos = self.theme.get_servers_start_pos() as u16;
         let mut idx = 0;
         for channel in &self.servers[self.curr_server].channels {
             write!(self.screen, "{}{}{}{}{}{}{}{}",
@@ -252,7 +264,7 @@ impl GUI {
             idx += 1;
             //TODO scrolling
         }
-        vert_pos = list_height / 2 + 6;
+        vert_pos = self.theme.get_channels_start_pos(height) as u16;
         idx = 0;
         for server in &self.servers {
             write!(self.screen, "{}{}{}{}{}{}{}{}{}",
@@ -326,7 +338,6 @@ impl GUI {
     
     fn draw_border(&mut self) {
         let (width, height) = termion::terminal_size().unwrap();
-        let list_height = self.theme.get_list_height(height);
         let channels_height = self.theme.get_channels_height(height);
         let servers_height  = self.theme.get_servers_height(height);
         
