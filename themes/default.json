@@ -11,18 +11,18 @@
     "system-message-foreground": "light green",
     "system-message-background": "reset",
     
-    "border-tl":           ["┏", "reset", "reset"],
-    "border-top":          ["━", "reset", "reset"],
-    "border-tr":           ["┓", "reset", "reset"],
-    "border-left":         ["┃", "reset", "reset"],
-    "border-bl":           ["┗", "reset", "reset"],
-    "border-br":           ["┛", "reset", "reset"],
-    "border-bottom":       ["━", "reset", "reset"],
-    "border-right":        ["┃", "reset", "reset"],
-    "border-bottom-split": ["┻", "reset", "reset"],
+    "border-tl":           ["╭", "reset", "reset"],
+    "border-top":          ["─", "reset", "reset"],
+    "border-tr":           ["╮", "reset", "reset"],
+    "border-left":         ["│", "reset", "reset"],
+    "border-bl":           ["╰", "reset", "reset"],
+    "border-br":           ["╯", "reset", "reset"],
+    "border-bottom":       ["─", "reset", "reset"],
+    "border-right":        ["│", "reset", "reset"],
     "border-top-split":    ["┳", "reset", "reset"],
     "border-left-split":   ["┣", "reset", "reset"],
-    "border-right-split":  ["┫", "reset", "reset"]
+    "border-right-split":  ["┫", "reset", "reset"],
+    "border-bottom-split": ["┻", "reset", "reset"]
 },
 
 "edit": {
@@ -31,11 +31,30 @@
 },
 
 "messages": {
-    "border-left": ["┃", "reset", "reset"]
+    "border-left": ["", "reset", "reset"]
 },
 
 "servers": {
-    "border-top": ["-", "reset", "reset"]
+    "border-top": ["", "reset", "reset"],
+    "border-bottom": [" ", "reset", "reset"],
+    "border-bl": [" ", "reset", "reset"],
+    "border-bottom-split": ["╰", "reset", "reset"],
+    "border-left": [" ", "reset", "reset"]
+},
+
+"channels": {
+    "border-right": [" ", "reset", "reset"],
+    "border-right-split": ["╮", "reset", "reset"],
+    "border-left-split": ["╰", "reset", "reset"]
+},
+
+"status": {
+    "border-left": [" ", "reset", "reset"],
+    "border-left-split": ["╭", "reset", "reset"],
+    "border-right-split": ["╯", "reset", "reset"],
+    "border-tl": [" ", "reset", "reset"],
+    "border-top": [" ", "reset", "reset"],
+    "border-top-split": ["╭", "reset", "reset"]
 }
 
 }

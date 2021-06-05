@@ -146,6 +146,7 @@ pub struct Theme {
     pub servers: ThemedArea,
     pub edit: ThemedArea,
     pub messages: ThemedArea,
+    pub status: ThemedArea,
     pub left_margin: usize,
 }
 
@@ -192,6 +193,7 @@ impl Theme {
         let channels = ThemedArea::new(&totalcfg["channels"], &totalcfg["global"]);
         let edit = ThemedArea::new(&totalcfg["edit"], &totalcfg["global"]);
         let messages = ThemedArea::new(&totalcfg["messages"], &totalcfg["global"]);
+        let status = ThemedArea::new(&totalcfg["status"], &totalcfg["global"]);
 
         Ok(Theme {
             left_margin: 24,
@@ -199,6 +201,7 @@ impl Theme {
             channels,
             edit,
             messages,
+            status,
         })
     }
 
@@ -348,27 +351,27 @@ impl GUI {
         let space_padding = " ".repeat(width as usize - left_margin - total_border_width);
         let rs = termion::color::Fg(termion::color::Reset).to_string() + (&termion::color::Bg(termion::color::Reset).to_string());
 
-//                            0 1      2 3            4                5                    6                7             8 910    11     12               13
-        write!(self.screen, "{}{}{ctl}{}{}\r\n{cleft}{}{cright}{mleft}{}{mright}\r\n{cleft}{}{cright}{mleft}{}{mright}\r\n{}{}{}{}{sbl}{}{sbottom_split}{}{mbr}",
+//                            0 1      2 3            4                5                    6                7             8 91011     1213
+        write!(self.screen, "{}{}{sttl}{}{}\r\n{stleft}{}{stright}{mleft}{}{mright}\r\n{stleft}{}{stright}{mleft}{}{mright}\r\n{}{}{}{}{sbl}{}{}",
         
 /*0*/       termion::cursor::Goto(1, 1),
 /*1*/       termion::clear::All,
-/*2*/       border_rep(&self.theme.channels.border.top, left_margin),
+/*2*/       border_rep(&self.theme.status.border.top, left_margin),
 
-/*3*/       if self.theme.messages.border.left.width() == 0 {
-                format!("{ctop_split}{}{mtr}", 
+/*3*/       if self.theme.messages.border.left.width() == 0 || self.theme.channels.border.right.width() == 0 {
+                format!("{sttop_split}{}{mtr}", 
                     border_rep(&self.theme.messages.border.top, width as usize - left_margin - total_border_width),
 
                     mtr = self.theme.messages.border.tr,
-                    ctop_split = self.theme.channels.border.top_split,
+                    sttop_split = self.theme.status.border.top_split,
                 )
             } else {
-                format!("{ctr}{mtl}{}{mtr}", 
+                format!("{sttr}{mtl}{}{mtr}", 
                     border_rep(&self.theme.messages.border.top, width as usize - left_margin - total_border_width),
 
                     mtr = self.theme.messages.border.tr,
                     mtl = self.theme.messages.border.tl,
-                    ctr = self.theme.channels.border.tr,
+                    sttr = self.theme.status.border.tr,
                 )
             },
             
@@ -379,11 +382,11 @@ impl GUI {
 /*7*/       space_padding,
 
 /*8*/       if self.theme.channels.border.bottom.width() > 0 {
-                format!("{cleft_split}{}{cright_split}{mleft}{}{mright}\r\n",
+                format!("{stleft_split}{}{stright_split}{mleft}{}{mright}\r\n",
                     border_rep(&self.theme.channels.border.bottom, left_margin),
                     space_padding,
-                    cleft_split = self.theme.channels.border.left_split,
-                    cright_split = self.theme.channels.border.right_split,
+                    stleft_split = self.theme.status.border.left_split,
+                    stright_split = self.theme.status.border.right_split,
                     mright = self.theme.messages.border.right,
                     mleft = self.theme.messages.border.left,
                 )
@@ -391,12 +394,12 @@ impl GUI {
                 "".to_string()
             },
 
-/*9*/       format!("{sleft}{rs}{}{sright}{rs}{mleft}{}{mright}\r\n",
+/*9*/       format!("{cleft}{rs}{}{cright}{rs}{mleft}{}{mright}\r\n",
                 " ".repeat(left_margin),
                 space_padding,
                 rs = rs,
-                sleft = self.theme.servers.border.left, 
-                sright = self.theme.servers.border.right, 
+                cleft = self.theme.channels.border.left, 
+                cright = self.theme.channels.border.right, 
                 mright = self.theme.messages.border.right,
                 mleft = self.theme.messages.border.left,
             ).repeat(channels_height),
@@ -447,22 +450,40 @@ impl GUI {
             ).repeat(servers_height),
 
 /*12*/      border_rep(&self.theme.servers.border.bottom, left_margin),
-/*13*/      border_rep(&self.theme.messages.border.bottom, width as usize - left_margin - total_border_width),
+
+/*13*/      if self.theme.messages.border.left.width() == 0 || self.theme.servers.border.right.width() == 0 {
+                format!("{sbottom_split}{}{mbr}", 
+                    border_rep(&self.theme.messages.border.bottom, width as usize - left_margin - total_border_width),
+
+                    mbr = self.theme.messages.border.br,
+                    sbottom_split = self.theme.servers.border.bottom_split,
+                )
+            } else {
+                format!("{sbr}{mbl}{}{mbr}", 
+                    border_rep(&self.theme.messages.border.bottom, width as usize - left_margin - total_border_width),
+
+                    mbr = self.theme.messages.border.br,
+                    mbl = self.theme.messages.border.bl,
+                    sbr = self.theme.servers.border.br,
+                )
+            },
 
             //stl = self.theme.servers.border.tl,
-            ctl = self.theme.channels.border.tl,
+            sttl = self.theme.status.border.tl,
             sbl = self.theme.servers.border.bl,
             //ctop_split = self.theme.channels.border.top_split,
             //sleft = self.theme.servers.border.left,
-            cleft = self.theme.channels.border.left,
+            //cleft = self.theme.channels.border.left,
+            stleft = self.theme.status.border.left,
             //sright = self.theme.servers.border.right,
             //sleft_split = self.theme.servers.border.left_split,
             //sright_split = self.theme.servers.border.right_split,
-            sbottom_split = self.theme.servers.border.bottom_split,
+            //sbottom_split = self.theme.servers.border.bottom_split,
             mright = self.theme.messages.border.right,
-            cright = self.theme.channels.border.right,
+            //cright = self.theme.channels.border.right,
+            stright = self.theme.status.border.right,
             mleft = self.theme.messages.border.left,
-            mbr = self.theme.messages.border.br,
+            //mbr = self.theme.messages.border.br,
             //mtr = self.theme.messages.border.tr,
 
             
