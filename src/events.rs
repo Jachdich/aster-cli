@@ -82,23 +82,32 @@ impl GUI {
 
     async fn focus_channels_event(&mut self, event: Event) {
         let s = &mut self.servers[self.curr_server];
-        match event {
+        let reload = match event {
             Event::Key(Key::Up) => {
                 if s.curr_channel > 0 {
                     s.curr_channel -= 1;
+                    true
+                } else {
+                    false
                 }
             }
 
             Event::Key(Key::Down) => {
                 if s.curr_channel < s.channels.len() - 1 {
                     s.curr_channel += 1;
+                    true
+                } else {
+                    false
                 }
             }
-            _ => (),
+            _ => false,
+        };
+        
+        if reload {
+            s.write(format!("/join {}\n", s.channels[s.curr_channel]).as_bytes()).await.unwrap();
+            let cmd = format!("/join {}", s.channels[s.curr_channel]);
+            self.handle_send_command(cmd).await;
         }
-        s.write(format!("/join {}\n", s.channels[s.curr_channel]).as_bytes()).await.unwrap();
-        let cmd = format!("/join {}", s.channels[s.curr_channel]);
-        self.handle_send_command(cmd).await;
     }
 
     pub async fn handle_keyboard(&mut self, key: Event) -> bool {

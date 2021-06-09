@@ -331,7 +331,7 @@ impl GUI {
                 
                 buffer.push_str(&format!("{}{}{}", termion::cursor::Goto(
                     self.theme.left_margin as u16 + self.theme.servers.border.left.width() + self.theme.servers.border.right.width() + 2,
-                    height - line - 1), &message.content[i * max_chars..e], ""));
+                    height - line - 1), &message.content[i * max_chars..e], " ".repeat(max_chars - e)));
                 line -= 1;
             }
         }
@@ -355,7 +355,7 @@ impl GUI {
         write!(self.screen, "{}{}{sttl}{}{}\r\n{stleft}{}{stright}{mleft}{}{mright}\r\n{stleft}{}{stright}{mleft}{}{mright}\r\n{}{}{}{}{sbl}{}{}",
         
 /*0*/       termion::cursor::Goto(1, 1),
-/*1*/       termion::clear::All,
+/*1*/       "",
 /*2*/       border_rep(&self.theme.status.border.top, left_margin),
 
 /*3*/       if self.theme.messages.border.left.width() == 0 || self.theme.channels.border.right.width() == 0 {
@@ -538,10 +538,18 @@ impl GUI {
             write!(self.screen, "Terminal size is too small lol").unwrap();
             return;
         }
+
+        if self.last_w != width || self.last_h != height { 
+            self.redraw = true;
+        }
+
+        if self.redraw {
+            self.draw_border();
+            self.redraw = false;
+        }
     
         match self.mode {
             Mode::Messages => {
-                self.draw_border();
                 if self.servers.len() > 0 {
                     self.draw_messages();
                     self.draw_servers();
@@ -549,7 +557,6 @@ impl GUI {
                 write!(self.screen, "{}{}", termion::cursor::Goto(self.theme.left_margin as u16 + self.theme.servers.border.left.width() + self.theme.servers.border.right.width() + 2, height - 1), self.buffer).unwrap();
             }
             Mode::NewServer => {
-                self.draw_border();
                 if self.servers.len() > 0 {
                     self.draw_servers();
                 }
@@ -559,6 +566,8 @@ impl GUI {
                 
             }
         }
+        self.last_w = width;
+        self.last_h = height;
     }
 }
 

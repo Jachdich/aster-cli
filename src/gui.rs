@@ -30,6 +30,9 @@ pub struct GUI {
     pub port_buffer: String,
     pub uuid_buffer: String,
 
+    pub redraw: bool,
+    pub last_w: u16,    
+    pub last_h: u16,
 //    preferen
 }
 
@@ -103,6 +106,9 @@ impl GUI {
             ip_buffer: "".to_string(),
             port_buffer: "".to_string(),
             uuid_buffer: "".to_string(),
+            redraw: true,
+            last_w: 0,
+            last_h: 0,
         }
     }
 
