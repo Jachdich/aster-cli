@@ -41,22 +41,24 @@ impl Server {
     pub fn add_message(&mut self, content: String, nick: String) {
 
         //todo compile regex once and use it mulyiple times, this is slow as fuck
-        let url_regex = r#"^https?://(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)$"#;
-        let compiled_regex = regex::Regex::new(url_regex).unwrap();
-        if compiled_regex.is_match(&content) {
+        //let url_regex = r#"^https?://(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)$"#;
+        //let compiled_regex = regex::Regex::new(url_regex).unwrap();
+        //if compiled_regex.is_match(&content) {
             //this is gonna be fuckin rough... brace yourselves
-        }
+        //}
 
         self.loaded_messages.push(
             Message{
-                content: format!("{}: {}", nick, content),
+                content: format!("{}: {}", nick, content).into(),
             }
         );
     }
 
     pub fn offline(ip: String, port: u16, name: String, uuid: u64) -> Self {
+        let mut loaded_messages: Vec<Message> = Vec::new();
+        loaded_messages.push(Message { content: "this is the fist message".to_string().into() });
         Server{
-            loaded_messages: Vec::new(),
+            loaded_messages,
             ip,
             port,
             name: name,

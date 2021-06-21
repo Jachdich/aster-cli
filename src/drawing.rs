@@ -24,9 +24,123 @@ pub struct FmtChar {
 	pub bg: String,
 }
 
+#[derive(Clone)]
+pub struct FmtString {
+    pub cont: Vec<FmtChar>,
+	dirty: bool,
+	cache: String,
+}
+
 impl fmt::Display for FmtChar {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}{}{}", self.fg, self.bg, self.ch)
+    }
+}
+
+/*
+impl fmt::Display for FmtString {
+    fn fmt(&mut self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.dirty {
+            self.rebuild_cache();
+        }
+        
+        write!(f, "{}", self.cache)
+    }
+}*/
+
+impl From<String> for FmtString {
+    fn from(item: String) -> Self {
+        FmtString::from_str(&item)
+    }
+}
+
+use core::ops::Index;
+use core::ops::IndexMut;
+use core::ops::Range;
+
+impl Index<Range<usize>> for FmtString {
+    type Output = [FmtChar];
+    fn index(&self, range: Range<usize>) -> &Self::Output {
+        &self.cont[range]
+    }
+}
+
+impl Index<usize> for FmtString {
+    type Output = FmtChar;
+    fn index(&self, idx: usize) -> &Self::Output {
+        &self.cont[idx]
+    }
+}
+
+impl IndexMut<usize> for FmtString {
+    fn index_mut(&mut self, idx: usize) -> &mut FmtChar {
+        self.dirty = true;
+        &mut self.cont[idx]
+    }
+}
+
+impl FmtString {
+    pub fn from_str(data: &str) -> Self {
+        let mut buf: Vec<FmtChar> = Vec::new();
+        for ch in data.chars() {
+            buf.push(FmtChar { ch: ch.to_string(), fg: String::new(), bg: String::new() });
+        }
+        FmtString {
+            cont: buf,
+            dirty: true,
+            cache: String::new()
+        }
+    }
+
+    pub fn from_buffer(data: Vec<FmtChar>) -> Self {
+        FmtString {
+            cont: data,
+            dirty: true,
+            cache: String::new()
+        }
+    }
+
+    pub fn from_slice(data: &[FmtChar]) -> Self {
+        FmtString {
+            cont: data.to_vec(),
+            dirty: true,
+            cache: String::new()
+        }
+    }
+    
+    pub fn to_optimised_string(&self) -> String {
+        let mut buf = String::new();
+        let mut last_fg = String::new();
+        let mut last_bg = String::new();
+        for ch in &self.cont {
+            if last_fg != ch.fg {
+                buf.push_str(&ch.fg);
+                last_fg = ch.fg.clone();
+            }
+            if last_bg != ch.bg {
+                buf.push_str(&ch.bg);
+                last_bg = ch.bg.clone();
+            }
+            buf.push_str(&ch.ch);
+        }
+        buf
+    }
+
+    pub fn as_str(&mut self) -> &str {
+        if self.dirty {
+            self.rebuild_cache();
+        }
+        
+        &self.cache
+    }
+
+    pub fn len(&self) -> usize {
+        self.cont.len()
+    }
+
+    fn rebuild_cache(&mut self) {
+        self.cache = self.to_optimised_string();
+        self.dirty = false;
     }
 }
 
@@ -115,6 +229,31 @@ fn parse_colour(inp: &str, bg: bool) -> &'static str {
 }
 
 #[derive(Clone, Debug)]
+pub struct Colour {
+    pub fg: String,
+    pub bg: String,
+}
+
+impl Colour {
+    pub fn new() -> Self {
+        Colour {
+            fg: "".to_string(),
+            bg: "".to_string(),
+        }
+    }
+
+    pub fn from_strs(fg: &str, bg: &str) -> Colour {
+        Colour { fg: fg.to_string(), bg: bg.to_string() }
+    }
+}
+
+impl fmt::Display for Colour {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}{}", self.fg, self.bg)
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct ThemedBorder {
     pub tl: FmtChar,
     pub tr: FmtChar,
@@ -132,11 +271,11 @@ pub struct ThemedBorder {
 
 #[derive(Clone, Debug)]
 pub struct ThemedArea {
-    pub text: String,
-    pub selected_text: String,
-    pub unfocussed_selected_text: String,
-    pub error_text: String,
-    pub system_message: String,
+    pub text: Colour,
+    pub selected_text: Colour,
+    pub unfocussed_selected_text: Colour,
+    pub error_text: Colour,
+    pub system_message: Colour,
     pub border: ThemedBorder,
 }
 
@@ -161,11 +300,11 @@ fn get_or<'a>(name: &str, main: &'a json::JsonValue, aux: &'a json::JsonValue) -
 impl ThemedArea {
     pub fn new(cfg: &json::JsonValue, fallback: &json::JsonValue) -> Self {
         ThemedArea {
-            text: parse_colour(&get_or("text-foreground", cfg, fallback).to_string(), false).to_string() + parse_colour(&get_or("text-background", cfg, fallback).to_string(), true),
-            selected_text: parse_colour(&get_or("selected-text-foreground", cfg, fallback).to_string(), false).to_string() + parse_colour(&get_or("selected-text-background", cfg, fallback).to_string(), true),
-            unfocussed_selected_text: parse_colour(&get_or("unfocussed-selected-text-foreground", cfg, fallback).to_string(), false).to_string() + parse_colour(&get_or("unfocussed-selected-text-background", cfg, fallback).to_string(), true),
-            error_text: parse_colour(&get_or("error-text-foreground", cfg, fallback).to_string(), false).to_string() + parse_colour(&get_or("error-text-background", cfg, fallback).to_string(), true),
-            system_message: parse_colour(&get_or("system-message-foreground", cfg, fallback).to_string(), false).to_string() + parse_colour(&get_or("system-message-background", cfg, fallback).to_string(), true),
+            text:                     Colour::from_strs(parse_colour(&get_or("text-foreground",                     cfg, fallback).to_string(), false),  parse_colour(&get_or("text-background", cfg, fallback).to_string(), true)),
+            selected_text:            Colour::from_strs(parse_colour(&get_or("selected-text-foreground",            cfg, fallback).to_string(), false),  parse_colour(&get_or("selected-text-background", cfg, fallback).to_string(), true)),
+            unfocussed_selected_text: Colour::from_strs(parse_colour(&get_or("unfocussed-selected-text-foreground", cfg, fallback).to_string(), false),  parse_colour(&get_or("unfocussed-selected-text-background", cfg, fallback).to_string(), true)),
+            error_text:               Colour::from_strs(parse_colour(&get_or("error-text-foreground",               cfg, fallback).to_string(), false),  parse_colour(&get_or("error-text-background", cfg, fallback).to_string(), true)),
+            system_message:           Colour::from_strs(parse_colour(&get_or("system-message-foreground",           cfg, fallback).to_string(), false),  parse_colour(&get_or("system-message-background", cfg, fallback).to_string(), true)),
 
             border: ThemedBorder {
                 tl:           FmtChar::from_json(get_or("border-tl",           &cfg, &fallback)),
@@ -278,7 +417,7 @@ impl GUI {
                 else { self.theme.servers.text.clone() },
                 
                 if server.net.is_none() { self.theme.servers.error_text.clone() }
-                else { "".to_string() },
+                else { Colour::new() },
                 
                 server.name,
                 " ".repeat(self.theme.left_margin - server.name.len()),
@@ -304,9 +443,9 @@ impl GUI {
         if (self.scroll + start_idx as isize) <= 0 { self.scroll = 0 - start_idx as isize; }
     
         //LOL not a good idea but it works
-        let start_idx = len as isize - max_messages as isize + self.scroll as isize;
-        let start_idx = if start_idx < 0 { 0 } else { start_idx as usize };
-        
+        //let start_idx = len as isize - max_messages as isize + self.scroll as isize;
+        //let start_idx = if start_idx < 0 { 0 } else { start_idx as usize };
+       
     
         let mut total_lines = 0;
         let max_chars: usize = width as usize - self.theme.left_margin - 4;
@@ -329,9 +468,13 @@ impl GUI {
                 }
                 let e = if (i + 1) * max_chars >= message.content.len() { message.content.len() } else { (i + 1) * max_chars };
                 
-                buffer.push_str(&format!("{}{}{}", termion::cursor::Goto(
-                    self.theme.left_margin as u16 + self.theme.servers.border.left.width() + self.theme.servers.border.right.width() + 2,
-                    height - line - 1), &message.content[i * max_chars..e], " ".repeat(max_chars - e)));
+                buffer.push_str(&format!("{}{}{}",
+                    termion::cursor::Goto(
+                        self.theme.left_margin as u16 + self.theme.servers.border.left.width() + self.theme.servers.border.right.width() + 2,
+                        height - line - 1
+                    ),
+                    FmtString::from_slice(&message.content[i * max_chars..e]).as_str(), " ".repeat(max_chars - message.content[i * max_chars..e].len())
+                ));
                 line -= 1;
             }
         }
@@ -340,154 +483,157 @@ impl GUI {
     
     
     fn draw_border(&mut self) {
-        let (width, height) = termion::terminal_size().unwrap();
-        let channels_height = self.theme.get_channels_height(height);
-        let servers_height  = self.theme.get_servers_height(height);
-        
-        let left_margin = self.theme.left_margin;
-
-        let total_border_width = (self.theme.servers.border.left.width() + self.theme.servers.border.right.width()
-                               + self.theme.messages.border.left.width() + self.theme.messages.border.right.width()) as usize;
-        let space_padding = " ".repeat(width as usize - left_margin - total_border_width);
-        let rs = termion::color::Fg(termion::color::Reset).to_string() + (&termion::color::Bg(termion::color::Reset).to_string());
-
-//                            0 1      2 3            4                5                    6                7             8 91011     1213
-        write!(self.screen, "{}{}{sttl}{}{}\r\n{stleft}{}{stright}{mleft}{}{mright}\r\n{stleft}{}{stright}{mleft}{}{mright}\r\n{}{}{}{}{sbl}{}{}",
-        
-/*0*/       termion::cursor::Goto(1, 1),
-/*1*/       "",
-/*2*/       border_rep(&self.theme.status.border.top, left_margin),
-
-/*3*/       if self.theme.messages.border.left.width() == 0 || self.theme.channels.border.right.width() == 0 {
-                format!("{sttop_split}{}{mtr}", 
-                    border_rep(&self.theme.messages.border.top, width as usize - left_margin - total_border_width),
-
-                    mtr = self.theme.messages.border.tr,
-                    sttop_split = self.theme.status.border.top_split,
-                )
-            } else {
-                format!("{sttr}{mtl}{}{mtr}", 
-                    border_rep(&self.theme.messages.border.top, width as usize - left_margin - total_border_width),
-
-                    mtr = self.theme.messages.border.tr,
-                    mtl = self.theme.messages.border.tl,
-                    sttr = self.theme.status.border.tr,
-                )
-            },
+        if self.draw_border {
+            self.draw_border = false;
+            let (width, height) = termion::terminal_size().unwrap();
+            let channels_height = self.theme.get_channels_height(height);
+            let servers_height  = self.theme.get_servers_height(height);
             
-/*4*/       centred("Connected to", left_margin),
-/*5*/       space_padding,
+            let left_margin = self.theme.left_margin;
 
-/*6*/       centred("cospox.com", self.theme.left_margin),
-/*7*/       space_padding,
+            let total_border_width = (self.theme.servers.border.left.width() + self.theme.servers.border.right.width()
+                                   + self.theme.messages.border.left.width() + self.theme.messages.border.right.width()) as usize;
+            let space_padding = " ".repeat(width as usize - left_margin - total_border_width);
+            let rs = termion::color::Fg(termion::color::Reset).to_string() + (&termion::color::Bg(termion::color::Reset).to_string());
 
-/*8*/       if self.theme.channels.border.bottom.width() > 0 {
-                format!("{stleft_split}{}{stright_split}{mleft}{}{mright}\r\n",
-                    border_rep(&self.theme.channels.border.bottom, left_margin),
+    //                            0 1      2 3            4                5                    6                7             8 91011     1213
+            self.border_buffer = format!("{}{}{sttl}{}{}\r\n{stleft}{}{stright}{mleft}{}{mright}\r\n{stleft}{}{stright}{mleft}{}{mright}\r\n{}{}{}{}{sbl}{}{}",
+            
+    /*0*/       termion::cursor::Goto(1, 1),
+    /*1*/       "",
+    /*2*/       border_rep(&self.theme.status.border.top, left_margin),
+
+    /*3*/       if self.theme.messages.border.left.width() == 0 || self.theme.channels.border.right.width() == 0 {
+                    format!("{sttop_split}{}{mtr}", 
+                        border_rep(&self.theme.messages.border.top, width as usize - left_margin - total_border_width),
+
+                        mtr = self.theme.messages.border.tr,
+                        sttop_split = self.theme.status.border.top_split,
+                    )
+                } else {
+                    format!("{sttr}{mtl}{}{mtr}", 
+                        border_rep(&self.theme.messages.border.top, width as usize - left_margin - total_border_width),
+
+                        mtr = self.theme.messages.border.tr,
+                        mtl = self.theme.messages.border.tl,
+                        sttr = self.theme.status.border.tr,
+                    )
+                },
+                
+    /*4*/       centred("Connected to", left_margin),
+    /*5*/       space_padding,
+
+    /*6*/       centred("cospox.com", self.theme.left_margin),
+    /*7*/       space_padding,
+
+    /*8*/       if self.theme.channels.border.bottom.width() > 0 {
+                    format!("{stleft_split}{}{stright_split}{mleft}{}{mright}\r\n",
+                        border_rep(&self.theme.channels.border.bottom, left_margin),
+                        space_padding,
+                        stleft_split = self.theme.status.border.left_split,
+                        stright_split = self.theme.status.border.right_split,
+                        mright = self.theme.messages.border.right,
+                        mleft = self.theme.messages.border.left,
+                    )
+                } else {
+                    "".to_string()
+                },
+
+    /*9*/       format!("{cleft}{rs}{}{cright}{rs}{mleft}{}{mright}\r\n",
+                    " ".repeat(left_margin),
                     space_padding,
-                    stleft_split = self.theme.status.border.left_split,
-                    stright_split = self.theme.status.border.right_split,
+                    rs = rs,
+                    cleft = self.theme.channels.border.left, 
+                    cright = self.theme.channels.border.right, 
                     mright = self.theme.messages.border.right,
                     mleft = self.theme.messages.border.left,
-                )
-            } else {
-                "".to_string()
-            },
+                ).repeat(channels_height),
 
-/*9*/       format!("{cleft}{rs}{}{cright}{rs}{mleft}{}{mright}\r\n",
-                " ".repeat(left_margin),
-                space_padding,
-                rs = rs,
-                cleft = self.theme.channels.border.left, 
-                cright = self.theme.channels.border.right, 
+    /*10*/      if self.theme.channels.border.bottom.width() > 0 && self.theme.servers.border.top.width() > 0 {
+                    format!("{cbl}{}{cbr}{mleft}{}{mright}\r\n{stl}{}{str}{mleft}{}{mright}\r\n", 
+                        border_rep(&self.theme.channels.border.bottom, left_margin), 
+                        space_padding,
+                        border_rep(&self.theme.servers.border.top, left_margin), 
+                        space_padding,
+                        cbl = self.theme.channels.border.bl,
+                        cbr = self.theme.channels.border.br,
+                        str = self.theme.servers.border.tr,
+                        stl = self.theme.servers.border.tl,
+                        mright = self.theme.messages.border.right,
+                        mleft = self.theme.messages.border.left,
+                    )
+                } else if self.theme.channels.border.bottom.width() > 0 {
+                    format!("{cleft_split}{}{cright_split}{mleft}{}{mright}\r\n", 
+                        border_rep(&self.theme.channels.border.bottom, left_margin),
+                        space_padding,
+                        cleft_split = self.theme.channels.border.left_split,
+                        cright_split = self.theme.channels.border.right_split,
+                        mright = self.theme.messages.border.right,
+                        mleft = self.theme.messages.border.left,
+                    )
+                } else if self.theme.servers.border.top.width() > 0 { 
+                    format!("{sleft_split}{}{sright_split}{mleft}{}{mright}\r\n", 
+                        border_rep(&self.theme.servers.border.top, left_margin),
+                        space_padding,
+                        sleft_split = self.theme.servers.border.left_split,
+                        sright_split = self.theme.servers.border.right_split,
+                        mright = self.theme.messages.border.right,
+                        mleft = self.theme.messages.border.left,
+                    )
+                } else {
+                    "".to_string()
+                },
+                
+    /*11*/      format!("{sleft}{rs}{}{sright}{rs}{mleft}{}{mright}\r\n", 
+                    " ".repeat(self.theme.left_margin), 
+                    space_padding,
+                    rs = rs,
+                    sleft = self.theme.servers.border.left,
+                    sright = self.theme.servers.border.right,
+                    mright = self.theme.messages.border.right,
+                    mleft = self.theme.messages.border.left,
+                ).repeat(servers_height),
+
+    /*12*/      border_rep(&self.theme.servers.border.bottom, left_margin),
+
+    /*13*/      if self.theme.messages.border.left.width() == 0 || self.theme.servers.border.right.width() == 0 {
+                    format!("{sbottom_split}{}{mbr}", 
+                        border_rep(&self.theme.messages.border.bottom, width as usize - left_margin - total_border_width),
+
+                        mbr = self.theme.messages.border.br,
+                        sbottom_split = self.theme.servers.border.bottom_split,
+                    )
+                } else {
+                    format!("{sbr}{mbl}{}{mbr}", 
+                        border_rep(&self.theme.messages.border.bottom, width as usize - left_margin - total_border_width),
+
+                        mbr = self.theme.messages.border.br,
+                        mbl = self.theme.messages.border.bl,
+                        sbr = self.theme.servers.border.br,
+                    )
+                },
+
+                //stl = self.theme.servers.border.tl,
+                sttl = self.theme.status.border.tl,
+                sbl = self.theme.servers.border.bl,
+                //ctop_split = self.theme.channels.border.top_split,
+                //sleft = self.theme.servers.border.left,
+                //cleft = self.theme.channels.border.left,
+                stleft = self.theme.status.border.left,
+                //sright = self.theme.servers.border.right,
+                //sleft_split = self.theme.servers.border.left_split,
+                //sright_split = self.theme.servers.border.right_split,
+                //sbottom_split = self.theme.servers.border.bottom_split,
                 mright = self.theme.messages.border.right,
+                //cright = self.theme.channels.border.right,
+                stright = self.theme.status.border.right,
                 mleft = self.theme.messages.border.left,
-            ).repeat(channels_height),
+                //mbr = self.theme.messages.border.br,
+                //mtr = self.theme.messages.border.tr,
 
-/*10*/      if self.theme.channels.border.bottom.width() > 0 && self.theme.servers.border.top.width() > 0 {
-                format!("{cbl}{}{cbr}{mleft}{}{mright}\r\n{stl}{}{str}{mleft}{}{mright}\r\n", 
-                    border_rep(&self.theme.channels.border.bottom, left_margin), 
-                    space_padding,
-                    border_rep(&self.theme.servers.border.top, left_margin), 
-                    space_padding,
-                    cbl = self.theme.channels.border.bl,
-                    cbr = self.theme.channels.border.br,
-                    str = self.theme.servers.border.tr,
-                    stl = self.theme.servers.border.tl,
-                    mright = self.theme.messages.border.right,
-                    mleft = self.theme.messages.border.left,
-                )
-            } else if self.theme.channels.border.bottom.width() > 0 {
-                format!("{cleft_split}{}{cright_split}{mleft}{}{mright}\r\n", 
-                    border_rep(&self.theme.channels.border.bottom, left_margin),
-                    space_padding,
-                    cleft_split = self.theme.channels.border.left_split,
-                    cright_split = self.theme.channels.border.right_split,
-                    mright = self.theme.messages.border.right,
-                    mleft = self.theme.messages.border.left,
-                )
-            } else if self.theme.servers.border.top.width() > 0 { 
-                format!("{sleft_split}{}{sright_split}{mleft}{}{mright}\r\n", 
-                    border_rep(&self.theme.servers.border.top, left_margin),
-                    space_padding,
-                    sleft_split = self.theme.servers.border.left_split,
-                    sright_split = self.theme.servers.border.right_split,
-                    mright = self.theme.messages.border.right,
-                    mleft = self.theme.messages.border.left,
-                )
-            } else {
-                "".to_string()
-            },
-            
-/*11*/      format!("{sleft}{rs}{}{sright}{rs}{mleft}{}{mright}\r\n", 
-                " ".repeat(self.theme.left_margin), 
-                space_padding,
-                rs = rs,
-                sleft = self.theme.servers.border.left,
-                sright = self.theme.servers.border.right,
-                mright = self.theme.messages.border.right,
-                mleft = self.theme.messages.border.left,
-            ).repeat(servers_height),
-
-/*12*/      border_rep(&self.theme.servers.border.bottom, left_margin),
-
-/*13*/      if self.theme.messages.border.left.width() == 0 || self.theme.servers.border.right.width() == 0 {
-                format!("{sbottom_split}{}{mbr}", 
-                    border_rep(&self.theme.messages.border.bottom, width as usize - left_margin - total_border_width),
-
-                    mbr = self.theme.messages.border.br,
-                    sbottom_split = self.theme.servers.border.bottom_split,
-                )
-            } else {
-                format!("{sbr}{mbl}{}{mbr}", 
-                    border_rep(&self.theme.messages.border.bottom, width as usize - left_margin - total_border_width),
-
-                    mbr = self.theme.messages.border.br,
-                    mbl = self.theme.messages.border.bl,
-                    sbr = self.theme.servers.border.br,
-                )
-            },
-
-            //stl = self.theme.servers.border.tl,
-            sttl = self.theme.status.border.tl,
-            sbl = self.theme.servers.border.bl,
-            //ctop_split = self.theme.channels.border.top_split,
-            //sleft = self.theme.servers.border.left,
-            //cleft = self.theme.channels.border.left,
-            stleft = self.theme.status.border.left,
-            //sright = self.theme.servers.border.right,
-            //sleft_split = self.theme.servers.border.left_split,
-            //sright_split = self.theme.servers.border.right_split,
-            //sbottom_split = self.theme.servers.border.bottom_split,
-            mright = self.theme.messages.border.right,
-            //cright = self.theme.channels.border.right,
-            stright = self.theme.status.border.right,
-            mleft = self.theme.messages.border.left,
-            //mbr = self.theme.messages.border.br,
-            //mtr = self.theme.messages.border.tr,
-
-            
-        ).unwrap();
+            );
+        }
+        write!(self.screen, "{}", self.border_buffer).unwrap();
     
     }
 
@@ -504,26 +650,26 @@ impl GUI {
         }
         
         write!(self.screen, "{}{}ip   : {}{}{}{}{}port : {}{}{}{}{}uuid : {}{}{}{}{}[connect]{}{} {}[cancel]{}{}{}",
-            if self.sel_idx == 0 { self.theme.servers.selected_text.clone() } else { "".to_string() },
+            if self.sel_idx == 0 { self.theme.servers.selected_text.clone() } else { Colour::new() },
             termion::cursor::Goto(self.theme.left_margin as u16 + 4, height - 4),
             termion::color::Fg(termion::color::Reset), termion::color::Bg(termion::color::Reset),
             self.ip_buffer,
 
-            if self.sel_idx == 1 { self.theme.servers.selected_text.clone() } else { "".to_string() },
+            if self.sel_idx == 1 { self.theme.servers.selected_text.clone() } else { Colour::new() },
             termion::cursor::Goto(self.theme.left_margin as u16 + 4, height - 3),
             termion::color::Fg(termion::color::Reset), termion::color::Bg(termion::color::Reset),
             self.port_buffer,
 
-            if self.sel_idx == 2 { self.theme.servers.selected_text.clone() } else { "".to_string() },
+            if self.sel_idx == 2 { self.theme.servers.selected_text.clone() } else { Colour::new() },
             termion::cursor::Goto(self.theme.left_margin as u16 + 4, height - 2),
             termion::color::Fg(termion::color::Reset), termion::color::Bg(termion::color::Reset),
             self.uuid_buffer,
             
             termion::cursor::Goto(self.theme.left_margin as u16 + 4, height - 1),
-            if self.sel_idx == 3 { self.theme.servers.selected_text.clone() } else { "".to_string() }, 
+            if self.sel_idx == 3 { self.theme.servers.selected_text.clone() } else { Colour::new() }, 
             termion::color::Bg(termion::color::Reset),
             termion::color::Fg(termion::color::Reset),
-            if self.sel_idx == 4 { self.theme.servers.selected_text.clone() } else { "".to_string() },
+            if self.sel_idx == 4 { self.theme.servers.selected_text.clone() } else { Colour::new() },
             termion::color::Bg(termion::color::Reset),
             termion::color::Fg(termion::color::Reset),
             termion::cursor::Goto(cur_x, cur_y),
@@ -545,7 +691,7 @@ impl GUI {
 
         if self.redraw {
             self.draw_border();
-            self.redraw = false;
+            self.redraw = true;
         }
     
         match self.mode {

@@ -11,8 +11,10 @@ mod events;
 mod gui;
 mod server;
 mod servernetwork;
+mod parser;
 
 use gui::GUI;
+use drawing::FmtString;
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum Mode {
@@ -39,7 +41,7 @@ pub struct User {
 
 pub struct Message {
 //    author: u64,
-    content: String,
+    content: FmtString,
 //    time: chrono::DateTime,
 }
 

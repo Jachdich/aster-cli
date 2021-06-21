@@ -26,14 +26,14 @@ impl GUI {
                         Ok(_) => {
                             self.servers[self.curr_server].loaded_messages.push(
                                 Message {
-                                    content: format!("{}: {}", self.config["uname"].to_string(), self.buffer)
+                                    content: format!("{}: {}", self.config["uname"].to_string(), self.buffer).into()
                             });
                             self.buffer = "".to_string();
                         }
                         Err(error) => {
                             self.servers[self.curr_server].loaded_messages.push(
                                 Message {
-                                    content: format!("{}System{}: {}", self.theme.messages.system_message, self.theme.messages.text, error)
+                                    content: format!("{}System{}: {}", self.theme.messages.system_message, self.theme.messages.text, error).into()
                             });
                         }
                     }
