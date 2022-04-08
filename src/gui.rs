@@ -167,10 +167,8 @@ impl GUI {
 
     fn handle_network_packet(&mut self, obj: json::JsonValue, serv: usize) {
         let s = &mut self.servers[serv];
-        if !obj["content"].is_null() {
-            let nick = s.peers[&obj["author_uuid"].as_u64().unwrap()].nick.clone();
-            s.add_message(obj["content"].to_string(), nick);
-        } else if !obj["command"].is_null() {
+
+        if !obj["command"].is_null() {
             match obj["command"].to_string().as_str() {
                 "metadata" => {
                     for elem in obj["data"].members() {
@@ -199,22 +197,27 @@ impl GUI {
                 "get_channels" => {
                     s.channels.clear();
                     for elem in obj["data"].members() {
-                        s.channels.push(elem.to_string());
+                        s.channels.push(elem["name"].to_string());
                     }
                 },
+                "history" => {
+                    for elem in obj["data"].members() {
+                        s.loaded_messages.push(Message{
+                            content: format!("{}: {}", 
+                                s.peers[&elem["author_uuid"].as_u64().unwrap()].nick,
+                                elem["content"].to_string()).into()});
+                    }
+                },
+                "content" => {
+                    let nick = s.peers[&obj["author_uuid"].as_u64().unwrap()].nick.clone();
+                    s.add_message(obj["content"].to_string(), nick);
+                },
                 _ => ()
-            }
-        } else if !obj["history"].is_null() {
-            for elem in obj["history"].members() {
-                s.loaded_messages.push(Message{
-                    content: format!("{}: {}", 
-                        s.peers[&elem["author_uuid"].as_u64().unwrap()].nick,
-                        elem["content"].to_string()).into()});
             }
         } else {
             s.loaded_messages.push(
             Message{
-                content: format!("DEBUG: {}", obj.dump()).into(),
+                content: format!("DEBUG (no command): {}", obj.dump()).into(),
             });
         }
     }

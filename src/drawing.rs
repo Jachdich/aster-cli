@@ -335,7 +335,7 @@ impl Theme {
         let status = ThemedArea::new(&totalcfg["status"], &totalcfg["global"]);
 
         Ok(Theme {
-            left_margin: 24,
+            left_margin: 32,
             servers,
             channels,
             edit,
