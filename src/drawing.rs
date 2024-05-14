@@ -208,22 +208,22 @@ fn parse_colour(inp: &str, bg: bool) -> &'static str {
     if inp.starts_with("#") { panic!("RGB colours not currently supported"); }
 
     match inp {
-        "black" => if bg { termion::color::Black.bg_str() } else { termion::color::Black.fg_str() },
-        "blue" => if bg { termion::color::Blue.bg_str() } else { termion::color::Blue.fg_str() },
-        "cyan" => if bg { termion::color::Cyan.bg_str() } else { termion::color::Cyan.fg_str() },
-        "green" => if bg { termion::color::Green.bg_str() } else { termion::color::Green.fg_str() },
-        "light black" => if bg { termion::color::LightBlack.bg_str() } else { termion::color::LightBlack.fg_str() },
-        "light blue" => if bg { termion::color::LightBlue.bg_str() } else { termion::color::LightBlue.fg_str() },
-        "light green" => if bg { termion::color::LightGreen.bg_str() } else { termion::color::LightGreen.fg_str() },
+        "black"         => if bg { termion::color::Black.bg_str()        } else { termion::color::Black.fg_str() },
+        "blue"          => if bg { termion::color::Blue.bg_str()         } else { termion::color::Blue.fg_str() },
+        "cyan"          => if bg { termion::color::Cyan.bg_str()         } else { termion::color::Cyan.fg_str() },
+        "green"         => if bg { termion::color::Green.bg_str()        } else { termion::color::Green.fg_str() },
+        "light black"   => if bg { termion::color::LightBlack.bg_str()   } else { termion::color::LightBlack.fg_str() },
+        "light blue"    => if bg { termion::color::LightBlue.bg_str()    } else { termion::color::LightBlue.fg_str() },
+        "light green"   => if bg { termion::color::LightGreen.bg_str()   } else { termion::color::LightGreen.fg_str() },
         "light magenta" => if bg { termion::color::LightMagenta.bg_str() } else { termion::color::LightMagenta.fg_str() },
-        "light red" => if bg { termion::color::LightRed.bg_str() } else { termion::color::LightRed.fg_str() },
-        "light white" => if bg { termion::color::LightWhite.bg_str() } else { termion::color::LightWhite.fg_str() },
-        "light yellow" => if bg { termion::color::LightYellow.bg_str() } else { termion::color::LightYellow.fg_str() },
-        "magenta" => if bg { termion::color::Magenta.bg_str() } else { termion::color::Magenta.fg_str() },
-        "red" => if bg { termion::color::Red.bg_str() } else { termion::color::Red.fg_str() },
-        "reset" => if bg { termion::color::Reset.bg_str() } else { termion::color::Reset.fg_str() },
-        "white" => if bg { termion::color::White.bg_str() } else { termion::color::White.fg_str() },
-        "yellow" => if bg { termion::color::Yellow.bg_str() } else { termion::color::Yellow.fg_str() },
+        "light red"     => if bg { termion::color::LightRed.bg_str()     } else { termion::color::LightRed.fg_str() },
+        "light white"   => if bg { termion::color::LightWhite.bg_str()   } else { termion::color::LightWhite.fg_str() },
+        "light yellow"  => if bg { termion::color::LightYellow.bg_str()  } else { termion::color::LightYellow.fg_str() },
+        "magenta"       => if bg { termion::color::Magenta.bg_str()      } else { termion::color::Magenta.fg_str() },
+        "red"           => if bg { termion::color::Red.bg_str()          } else { termion::color::Red.fg_str() },
+        "reset"         => if bg { termion::color::Reset.bg_str()        } else { termion::color::Reset.fg_str() },
+        "white"         => if bg { termion::color::White.bg_str()        } else { termion::color::White.fg_str() },
+        "yellow"        => if bg { termion::color::Yellow.bg_str()       } else { termion::color::Yellow.fg_str() },
         _ => "",
     }
 }
@@ -496,8 +496,7 @@ impl GUI {
             let space_padding = " ".repeat(width as usize - left_margin - total_border_width);
             let rs = termion::color::Fg(termion::color::Reset).to_string() + (&termion::color::Bg(termion::color::Reset).to_string());
 
-    //                            0 1      2 3            4                5                    6                7             8 91011     1213
-            self.border_buffer = format!("{}{}{sttl}{}{}\r\n{stleft}{}{stright}{mleft}{}{mright}\r\n{stleft}{}{stright}{mleft}{}{mright}\r\n{}{}{}{}{sbl}{}{}",
+            self.border_buffer = format!("{0}{1}{sttl}{2}{3}\r\n{stleft}{4}{stright}{mleft}{5}{mright}\r\n{stleft}{6}{stright}{mleft}{7}{mright}\r\n{8}{9}{10}{11}{sbl}{12}{13}",
             
     /*0*/       termion::cursor::Goto(1, 1),
     /*1*/       "",

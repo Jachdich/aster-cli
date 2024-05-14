@@ -1,20 +1,19 @@
+extern crate dirs;
 extern crate termion;
 extern crate tokio;
-extern crate dirs;
 use termion::event::Event;
 
-use std::io::stdin;
 use crate::termion::input::TermRead;
+use std::io::stdin;
 
 mod drawing;
 mod events;
 mod gui;
-mod server;
-mod servernetwork;
 mod parser;
+mod server;
 
-use gui::GUI;
 use drawing::FmtString;
+use gui::GUI;
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum Mode {
@@ -39,10 +38,13 @@ pub struct User {
     uuid: u64,
 }
 
-pub struct Message {
-//    author: u64,
-    content: FmtString,
-//    time: chrono::DateTime,
+pub enum Message {
+    User {
+        author: u64,
+        content: FmtString,
+        // time: chrono::DateTime,
+    },
+    System(FmtString),
 }
 
 pub enum LocalMessage {
@@ -67,23 +69,27 @@ impl User {
     }
 }
 
-
 fn process_input(tx: std::sync::mpsc::Sender<LocalMessage>) {
     let stdin = stdin();
 
     for event in stdin.events() {
-        tx.send(LocalMessage::Keyboard(event.as_ref().unwrap().clone())).unwrap();
+        tx.send(LocalMessage::Keyboard(event.as_ref().unwrap().clone()))
+            .unwrap();
     }
 }
 
 #[tokio::main]
 async fn main() {
-    let (tx, rx): (std::sync::mpsc::Sender<LocalMessage>, std::sync::mpsc::Receiver<LocalMessage>) = std::sync::mpsc::channel();
+    let (tx, rx): (
+        std::sync::mpsc::Sender<LocalMessage>,
+        std::sync::mpsc::Receiver<LocalMessage>,
+    ) = std::sync::mpsc::channel();
 
     let input_tx = tx.clone();
-    std::thread::spawn(move || {
+    tokio::spawn(async move {
         process_input(input_tx);
     });
+
     let mut gui = GUI::new(tx, rx).await;
     gui.run_gui().await;
 }
