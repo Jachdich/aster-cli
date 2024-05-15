@@ -4,6 +4,7 @@ use super::Message;
 use super::Mode;
 use super::User;
 use crate::server::Server;
+use std::sync::mpsc::{Receiver, Sender};
 
 extern crate termion;
 use std::io::{stdout, Write};
@@ -15,10 +16,11 @@ use crate::drawing::Theme;
 pub struct GUI {
     pub scroll: isize,
     pub buffer: String,
-    pub tx: std::sync::mpsc::Sender<LocalMessage>,
-    pub rx: std::sync::mpsc::Receiver<LocalMessage>,
+    pub tx: Sender<LocalMessage>,
+    pub rx: Receiver<LocalMessage>,
     pub config: json::JsonValue,
-    pub servers: Vec<Server>,
+    pub servers: Vec<Server>, // TODO hashmap or linear lookup with Vec?
+    // FEAT server folders
     pub curr_server: usize,
     pub mode: Mode,
     pub focus: Focus,
@@ -74,10 +76,11 @@ impl GUI {
                 serv["ip"].to_string(),
                 serv["port"].as_u16().unwrap(),
                 serv["uuid"].as_u64().unwrap(),
+                tx.clone(),
             )
             .await;
             servers.push(conn);
-            let _ = conn.initialise();
+            // conn.initialise();
         }
 
         let stdout = stdout();

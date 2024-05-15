@@ -57,6 +57,7 @@ name = "cli"
 version = "0.1.0"
 dependencies = [
  "dirs",
+ "enum_common_fields",
  "futures",
  "json",
  "native-tls",
@@ -103,6 +104,17 @@ dependencies = [
  "option-ext",
  "redox_users",
  "windows-sys 0.48.0",
+]
+
+[[package]]
+name = "enum_common_fields"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4cf89dcce3883a8a677219a5bdd58ff21ed7cca60ffcd3355330c16313fd957f"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]

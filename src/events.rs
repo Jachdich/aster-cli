@@ -77,7 +77,7 @@ impl GUI {
         }
     }
 
-    async fn focus_servers_event(&mut self, event: Event) {
+    fn focus_servers_event(&mut self, event: Event) {
         match event {
             Event::Key(Key::Up) => {
                 if self.curr_server > 0 {
@@ -94,7 +94,7 @@ impl GUI {
         }
     }
 
-    async fn focus_channels_event(&mut self, event: Event) {
+    fn focus_channels_event(&mut self, event: Event) {
         let s = &mut self.servers[self.curr_server];
         let reload = match event {
             Event::Key(Key::Up) => {

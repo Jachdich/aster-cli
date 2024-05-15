@@ -5,6 +5,7 @@ use termion::event::Event;
 
 use crate::termion::input::TermRead;
 use std::io::stdin;
+use std::net::SocketAddr;
 
 mod drawing;
 mod events;
@@ -49,7 +50,7 @@ pub enum Message {
 
 pub enum LocalMessage {
     Keyboard(Event),
-    Network(String, usize),
+    Network(String, SocketAddr),
 }
 
 impl User {

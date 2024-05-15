@@ -3,48 +3,106 @@ extern crate tokio;
 
 use crate::tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 use crate::FmtString;
+use crate::LocalMessage;
+use enum_common_fields::EnumCommonFields;
 use std::collections::HashMap;
+use std::net::SocketAddr;
+use std::sync::mpsc::Sender;
 use tokio::io::{ReadHalf, WriteHalf};
 use tokio::net::TcpStream;
-use tokio_native_tls::TlsStream;
+// use tokio_native_tls::TlsStream;
 
 use super::Message;
 use super::User;
 use json::{object, JsonValue};
 
+type SocketStream = TcpStream;
+
+// TODO: which of name and uuid, if any, should be Options?
 pub enum Server {
     Online {
         loaded_messages: Vec<Message>,
+        channels: Vec<String>,
+        curr_channel: Option<usize>,
+        peers: HashMap<u64, User>,
+        write_half: WriteHalf<SocketStream>,
+        remote_addr: SocketAddr,
         ip: String,
         port: u16,
-        name: String,
-        channels: Vec<String>,
-        curr_channel: usize,
-        peers: HashMap<u64, User>,
-        uuid: u64,
-        write_half: WriteHalf<TlsStream<TcpStream>>,
+        name: Option<String>,
+        uuid: Option<u64>,
     },
     Offline {
+        offline_reason: String,
         ip: String,
         port: u16,
-        name: String,
-        uuid: u64,
-        offline_reason: String,
+        name: Option<String>,
+        uuid: Option<u64>,
     },
 }
 
 impl Server {
-    pub async fn new(ip: String, port: u16, uuid: u64, idx: usize) -> Self {
-        Server {
-            loaded_messages: Vec::new(),
-            ip,
-            port,
-            name: "".to_string(),
-            channels: Vec::new(),
-            curr_channel: 0,
-            peers: HashMap::new(),
-            uuid,
-            write_half: None,
+    fn ip(&self) -> &str {
+        match self {
+            Self::Online { ip, .. } | Self::Offline { ip, .. } => &ip,
+        }
+    }
+    fn port(&self) -> u16 {
+        match self {
+            Self::Online { port, .. } | Self::Offline { port, .. } => *port,
+        }
+    }
+    fn uuid(&self) -> Option<u64> {
+        match self {
+            Self::Online { uuid, .. } | Self::Offline { uuid, .. } => *uuid,
+        }
+    }
+    fn name(&self) -> Option<&str> {
+        match self {
+            Self::Online { name, .. } | Self::Offline { name, .. } => name.map(|x| x.as_str()),
+        }
+    }
+}
+
+impl Server {
+    pub async fn new(ip: String, port: u16, uuid: u64, tx: Sender<LocalMessage>) -> Self {
+        match TcpStream::connect((ip.as_str(), port)).await {
+            Ok(socket) => {
+                let addr = socket.peer_addr().unwrap(); // TODO figure out if this is ever gonna cause a problem
+
+                // let cx = TlsConnector::builder()
+                //     .danger_accept_invalid_certs(true)
+                //     .build()?;
+                // let cx = tokio_native_tls::TlsConnector::from(cx);
+
+                // let socket = cx.connect(ip, socket).await?;
+                let (read_half, write_half) = tokio::io::split(socket);
+
+                let net_tx = tx.clone();
+                // let the_ip = ip.to_owned();
+                tokio::spawn(async move {
+                    Self::run_network(net_tx, read_half, addr);
+                });
+                Self::Online {
+                    loaded_messages: Vec::new(),
+                    channels: Vec::new(),
+                    curr_channel: None,
+                    peers: HashMap::new(),
+                    write_half,
+                    remote_addr: addr,
+                    ip,
+                    port,
+                    name: None,
+                    uuid: Some(uuid),
+                }
+            }
+            Err(e) => Self::Offline {
+                offline_reason: format!("Failed to connect: {:?}", e),
+                ip,
+                port,
+                name: None,
+                uuid: Some(uuid),
+            },
         }
     }
 
@@ -56,13 +114,18 @@ impl Server {
         //this is gonna be fuckin rough... brace yourselves
         //}
 
-        self.loaded_messages.push(Message::User { content, author });
+        match self {
+            Self::Online {
+                loaded_messages, ..
+            } => loaded_messages.push(Message::User { content, author }),
+            Self::Offline { .. } => panic!("Try to add a message to an offline server!"),
+        }
     }
 
     pub async fn write(&mut self, value: JsonValue) -> std::result::Result<usize, std::io::Error> {
-        match self.write_half.as_mut() {
-            Some(write_half) => write_half.write(&value.dump().into_bytes()).await,
-            None => Err(std::io::Error::new(
+        match self {
+            Self::Online { write_half, .. } => write_half.write(&value.dump().into_bytes()).await,
+            Self::Offline { .. } => Err(std::io::Error::new(
                 std::io::ErrorKind::NotConnected,
                 "Server is offline",
             )),
@@ -79,11 +142,11 @@ impl Server {
     }
 
     pub async fn initialise(&mut self) -> std::result::Result<(), Box<dyn std::error::Error>> {
-        if self.uuid == 0 {
-            self.write(object! {"command": "register"}).await?;
-        } else {
-            self.write(object! {"command": "login", "uuid": self.uuid, "passwd": "a"})
+        if let Some(uuid) = self.uuid() {
+            self.write(object! {"command": "login", "uuid": uuid, "passwd": "a"})
                 .await?;
+        } else {
+            self.write(object! {"command": "register"}).await?;
         }
         self.write(object! {"command": "get_icon"}).await?;
         self.write(object! {"command": "get_name"}).await?;
@@ -95,51 +158,34 @@ impl Server {
         Ok(())
     }
 
-    pub fn to_json(&self) -> json::JsonValue {
-        json::object! {
-            name: self.name.clone(),
-            ip: self.ip.clone(),
-            port: self.port,
-            uuid: self.uuid,
-        }
-    }
+    // pub fn to_json(&self) -> json::JsonValue {
+    //     json::object! {
+    //         name: self.name().into(),
+    //         ip: self.ip().clone(),
+    //         port: self.port(),
+    //         uuid: self.uuid(),
+    //     }
+    // }
 
-    pub async fn init_network(
-        &self,
-        ip: &str,
-        port: u16,
-    ) -> std::result::Result<(), std::io::Error> {
-        let addr = format!("{}:{}", ip, port);
-
-        let socket = TcpStream::connect(&addr).await?;
-        // let cx = TlsConnector::builder()
-        //     .danger_accept_invalid_certs(true)
-        //     .build()?;
-        // let cx = tokio_native_tls::TlsConnector::from(cx);
-
-        // let socket = cx.connect(ip, socket).await?;
-        let (read_half, write_half) = tokio::io::split(socket);
-
-        let net_tx = tx.clone();
-        std::thread::spawn(move || {
-            futures::executor::block_on(Self::run_network(net_tx, read_half, idx));
-        });
-        Ok(())
-    }
-
-    async fn run_network(tx: stream: ReadHalf<TlsStream<TcpStream>>) {
+    async fn run_network(
+        tx: std::sync::mpsc::Sender<LocalMessage>,
+        stream: ReadHalf<SocketStream>,
+        // addr: (String, u16),
+        addr: SocketAddr,
+    ) {
         let mut reader = tokio::io::BufReader::new(stream);
+        // let addr_hash = addr.hash();
 
         loop {
             let mut result: String = "".to_string();
             match reader.read_line(&mut result).await {
                 Ok(_len) => {
-                    self.handle_network_packet(result);
+                    tx.send(LocalMessage::Network(result, addr));
                 }
                 Err(e) => {
                     println!(
                         "Error occurred in network thread, ip: {}:{}: {:?}",
-                        self.ip, self.port, e
+                        addr.0, addr.1, e
                     );
                     return;
                 }
@@ -148,7 +194,15 @@ impl Server {
     }
 
     pub fn handle_network_packet(&mut self, obj: json::JsonValue) {
-        if let Self::Online { peers, uuid, name, loaded_messages, channels, .. } = self {
+        if let Self::Online {
+            peers,
+            uuid,
+            name,
+            loaded_messages,
+            channels,
+            ..
+        } = self
+        {
             if !obj["command"].is_null() {
                 match obj["command"].to_string().as_str() {
                     "metadata" => {
@@ -163,14 +217,12 @@ impl Server {
                     }
                     "set" => match obj["key"].to_string().as_str() {
                         "uuid" => {
-                            *uuid = obj["value"].as_u64().unwrap();
+                            *uuid = Some(obj["value"].as_u64().unwrap());
                         }
                         _ => (),
-                    }, /*
-                    "get_icon" => {
-                    s.icon*/
+                    },
                     "get_name" => {
-                        *name = obj["data"].to_string();
+                        *name = Some(obj["data"].to_string());
                     }
 
                     "get_channels" => {
