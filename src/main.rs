@@ -1,6 +1,7 @@
 extern crate dirs;
 extern crate termion;
 extern crate tokio;
+mod api;
 use termion::event::Event;
 
 use crate::termion::input::TermRead;
@@ -31,43 +32,14 @@ pub enum Focus {
     Messages,
 }
 
-#[derive(Debug)]
-pub struct User {
-    nick: String,
-    passwd: String,
-    pfp_b64: String,
-    uuid: u64,
-}
-
-pub enum Message {
-    User {
-        author: u64,
-        content: FmtString,
-        // time: chrono::DateTime,
-    },
+pub enum DisplayMessage {
+    User(api::Message),
     System(FmtString),
 }
 
 pub enum LocalMessage {
     Keyboard(Event),
     Network(String, SocketAddr),
-}
-
-impl User {
-    fn from_json(val: &json::JsonValue) -> Self {
-        User {
-            nick: val["name"].to_string(),
-            passwd: "".to_string(),
-            pfp_b64: val["pfp_b64"].to_string(),
-            uuid: val["uuid"].as_u64().unwrap(),
-        }
-    }
-
-    fn update(&mut self, val: &json::JsonValue) {
-        self.nick = val["name"].to_string();
-        self.pfp_b64 = val["pfp_b64"].to_string();
-        self.uuid = val["uuid"].as_u64().unwrap();
-    }
 }
 
 fn process_input(tx: std::sync::mpsc::Sender<LocalMessage>) {

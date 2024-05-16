@@ -1,7 +1,8 @@
 extern crate termion;
 use std::io::Write;
 use std::fmt;
-
+use crate::DisplayMessage;
+use crate::server::Server;
 use crate::gui::GUI;
 use super::Mode;
 
@@ -388,23 +389,25 @@ impl GUI {
     
         let mut vert_pos = self.theme.get_servers_start_pos() as u16;
         let mut idx = 0;
-        for channel in &self.servers[self.curr_server].channels {
-            write!(self.screen, "{}{}{}{}{}{}{}{}",
-                termion::cursor::Goto(1 + self.theme.servers.border.left.width(), vert_pos),
-                termion::color::Fg(termion::color::Reset), termion::color::Bg(termion::color::Reset),
+        if let Server::Online { channels, curr_channel, .. } = &self.servers[self.curr_server] {
+            for channel in channels {
+                write!(self.screen, "{}{}{}{}{}{}{}{}",
+                    termion::cursor::Goto(1 + self.theme.servers.border.left.width(), vert_pos),
+                    termion::color::Fg(termion::color::Reset), termion::color::Bg(termion::color::Reset),
     
-                if idx == self.servers[self.curr_server].curr_channel { self.theme.servers.selected_text.clone() }
-                else { self.theme.servers.text.clone() },
+                    if curr_channel.is_some_and(|cc| idx == cc) { self.theme.servers.selected_text.clone() }
+                    else { self.theme.servers.text.clone() },
                 
-                channel,
-                " ".repeat(self.theme.left_margin - channel.len()),
+                    channel.name,
+                    " ".repeat(self.theme.left_margin - channel.name.len()),
                 
-                termion::color::Bg(termion::color::Reset),
-                termion::color::Fg(termion::color::Reset),
-            ).unwrap();
-            vert_pos += 1;
-            idx += 1;
-            //TODO scrolling
+                    termion::color::Bg(termion::color::Reset),
+                    termion::color::Fg(termion::color::Reset),
+                ).unwrap();
+                vert_pos += 1;
+                idx += 1;
+                //TODO scrolling
+            }
         }
         vert_pos = self.theme.get_channels_start_pos(height) as u16;
         idx = 0;
@@ -416,11 +419,11 @@ impl GUI {
                 if idx == self.curr_server { self.theme.servers.selected_text.clone() }
                 else { self.theme.servers.text.clone() },
                 
-                if server.net.is_none() { self.theme.servers.error_text.clone() }
+                if let Server::Offline { .. } = server { self.theme.servers.error_text.clone() }
                 else { Colour::new() },
                 
-                server.name,
-                " ".repeat(self.theme.left_margin - server.name.len()),
+                server.name().unwrap_or("Unknown Server"),
+                " ".repeat(self.theme.left_margin - server.name().unwrap_or("Unknown Server").len()),
                 
                 termion::color::Fg(termion::color::Reset),
                 termion::color::Bg(termion::color::Reset),
@@ -431,7 +434,15 @@ impl GUI {
     }
     
     fn draw_messages(&mut self) {
-        let messages = &self.servers[self.curr_server].loaded_messages;
+        // TODO: Possibly more efficient way of doing this without copying?
+        let messages = match &self.servers[self.curr_server] {
+            Server::Online { loaded_messages, .. } => loaded_messages.iter().map(|message| match message {
+                DisplayMessage::User(message) => FmtString::from_str(&message.content),
+                DisplayMessage::System(s) => s.clone(),
+            }).collect::<Vec<FmtString>>(),
+            _ => Vec::new(),
+        };
+
         let (width, height) = termion::terminal_size().unwrap();
         let max_messages = height as usize - (self.theme.messages.border.top.width() + self.theme.messages.border.bottom.width() + self.theme.edit.border.bottom.width() + self.theme.edit.border.top.width()) as usize;
         let len = messages.len();
@@ -451,7 +462,7 @@ impl GUI {
         let max_chars: usize = width as usize - self.theme.left_margin - 4;
         let max_lines = height - 2;
         for msg in messages[(start_idx as isize + self.scroll) as usize..(len as isize + self.scroll) as usize].iter() {
-            total_lines += (msg.content.len() as f64 / max_chars as f64).ceil() as usize;
+            total_lines += (msg.len() as f64 / max_chars as f64).ceil() as usize;
         }
     
         let mut line = total_lines as u16;
@@ -460,20 +471,20 @@ impl GUI {
     
         for message in messages[(start_idx as isize + self.scroll) as usize..(len as isize + self.scroll) as usize].iter() {
     
-            let num_lines: usize = (message.content.len() as f64 / max_chars as f64).ceil() as usize;
+            let num_lines: usize = (message.len() as f64 / max_chars as f64).ceil() as usize;
             for i in 0..num_lines {
                 if line >= max_lines {
                     line -= 1;
                     continue;
                 }
-                let e = if (i + 1) * max_chars >= message.content.len() { message.content.len() } else { (i + 1) * max_chars };
+                let e = if (i + 1) * max_chars >= message.len() { message.len() } else { (i + 1) * max_chars };
                 
                 buffer.push_str(&format!("{}{}{}",
                     termion::cursor::Goto(
                         self.theme.left_margin as u16 + self.theme.servers.border.left.width() + self.theme.servers.border.right.width() + 2,
                         height - line - 1
                     ),
-                    FmtString::from_slice(&message.content[i * max_chars..e]).as_str(), " ".repeat(max_chars - message.content[i * max_chars..e].len())
+                    FmtString::from_slice(&message[i * max_chars..e]).as_str(), " ".repeat(max_chars - message[i * max_chars..e].len())
                 ));
                 line -= 1;
             }

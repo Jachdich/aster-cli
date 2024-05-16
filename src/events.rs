@@ -1,5 +1,5 @@
+use super::DisplayMessage;
 use super::Focus;
-use super::Message;
 use super::Mode;
 use crate::gui::GUI;
 use crate::server::Server;
@@ -13,47 +13,53 @@ impl GUI {
                     return;
                 }
 
-                let send_to_server: bool;
                 if self.buffer.chars().nth(0).unwrap() == '/' {
-                    send_to_server = self.handle_send_command(self.buffer.clone()).await;
+                    self.handle_send_command(self.buffer.clone()).await.unwrap(); // TODO set this as system message
+                    self.buffer = "".to_string();
                 } else {
-                    send_to_server = true;
-                }
+                    let curr_channel_uuid = if let Server::Online {
+                        channels,
+                        curr_channel,
+                        ..
+                    } = &self.servers[self.curr_server]
+                    {
+                        channels[curr_channel.unwrap()].uuid //TODO fix this!!!
+                    } else {
+                        panic!("Cannot send anything to a nonexistant server!")
+                    };
 
-                if send_to_server {
                     let res = self.servers[self.curr_server]
-                        .write(json::value!({command: "content", content: self.buffer.clone()}))
+                        .write(crate::api::Request::SendRequest {
+                            content: self.buffer.clone(),
+                            channel: curr_channel_uuid,
+                        })
                         .await;
                     match res {
                         Ok(_) => {
-                            self.servers[self.curr_server]
-                                .loaded_messages
-                                .push(Message::System(
-                                    format!(
-                                        "{}: {}",
-                                        self.config["uname"].to_string(),
-                                        self.buffer
-                                    )
-                                    .into(),
-                                ));
+                            // self.servers[self.curr_server]
+                            //     .loaded_messages
+                            //     .push(Message::System(
+                            //         format!(
+                            //             "{}: {}",
+                            //             self.config["uname"].to_string(),
+                            //             self.buffer
+                            //         )
+                            //         .into(),
+                            //     ));
                             self.buffer = "".to_string();
                         }
                         Err(error) => {
-                            self.servers[self.curr_server]
-                                .loaded_messages
-                                .push(Message::System(
-                                    format!(
-                                        "{}System{}: {}",
-                                        self.theme.messages.system_message,
-                                        self.theme.messages.text,
-                                        error
-                                    )
-                                    .into(),
-                                ));
+                            self.send_system(
+                                format!(
+                                    "{}System{}: {}",
+                                    self.theme.messages.system_message,
+                                    self.theme.messages.text,
+                                    error
+                                )
+                                .as_str(),
+                            );
                         }
                     }
-                } else {
-                    self.buffer = "".to_string();
                 }
             }
 
@@ -96,33 +102,45 @@ impl GUI {
 
     fn focus_channels_event(&mut self, event: Event) {
         let s = &mut self.servers[self.curr_server];
-        let reload = match event {
-            Event::Key(Key::Up) => {
-                if s.curr_channel > 0 {
-                    s.curr_channel -= 1;
-                    true
-                } else {
-                    false
+        if let Server::Online {
+            curr_channel,
+            channels,
+            ..
+        } = s
+        {
+            let reload = match event {
+                Event::Key(Key::Up) => {
+                    if curr_channel.is_some_and(|x| x > 0) {
+                        *curr_channel.as_mut().unwrap() -= 1;
+                        true
+                    } else {
+                        false
+                    }
                 }
-            }
 
-            Event::Key(Key::Down) => {
-                if s.curr_channel < s.channels.len() - 1 {
-                    s.curr_channel += 1;
-                    true
-                } else {
-                    false
+                Event::Key(Key::Down) => {
+                    if curr_channel.is_some_and(|x| x < channels.len() - 1) {
+                        *curr_channel.as_mut().unwrap() += 1;
+                        true
+                    } else if curr_channel.is_none() && channels.len() > 0 {
+                        *curr_channel = Some(0);
+                        true
+                    } else {
+                        false
+                    }
                 }
-            }
-            _ => false,
-        };
+                _ => false,
+            };
 
-        if reload {
-            // s.write(format!("/join {}\n", s.channels[s.curr_channel]).as_bytes())
-            //     .await
-            //     .unwrap();
-            // let cmd = format!("/join {}", s.channels[s.curr_channel]);
-            // self.handle_send_command(cmd).await;
+            if reload {
+                // s.write(format!("/join {}\n", s.channels[s.curr_channel]).as_bytes())
+                //     .await
+                //     .unwrap();
+                // let cmd = format!("/join {}", s.channels[s.curr_channel]);
+                // self.handle_send_command(cmd).await;
+            }
+        } else {
+            panic!("Offline server somehow changed their chanel")
         }
     }
 
@@ -149,8 +167,8 @@ impl GUI {
         if self.mode == Mode::Messages {
             match self.focus {
                 Focus::Edit => self.focus_edit_event(key.clone()).await,
-                Focus::ServerList => self.focus_servers_event(key.clone()).await,
-                Focus::ChannelList => self.focus_channels_event(key.clone()).await,
+                Focus::ServerList => self.focus_servers_event(key.clone()),
+                Focus::ChannelList => self.focus_channels_event(key.clone()),
                 Focus::Messages => (),
             }
         } else if self.mode == Mode::NewServer {
@@ -165,12 +183,10 @@ impl GUI {
                             Server::new(
                                 self.ip_buffer.clone(),
                                 self.port_buffer.parse::<u16>().unwrap(),
-                                self.uuid_buffer.parse::<u64>().unwrap(),
-                                self.servers.len(),
+                                self.uuid_buffer.parse::<i64>().unwrap(),
                                 self.tx.clone(),
                             )
-                            .await
-                            .unwrap(),
+                            .await,
                         );
                         self.servers.last_mut().unwrap().initialise().await.unwrap();
                         self.mode = Mode::Messages;
