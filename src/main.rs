@@ -12,6 +12,7 @@ mod drawing;
 mod events;
 mod gui;
 mod parser;
+mod prompt;
 mod server;
 
 use drawing::FmtString;

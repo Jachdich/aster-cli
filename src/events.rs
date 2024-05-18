@@ -2,6 +2,7 @@ use super::DisplayMessage;
 use super::Focus;
 use super::Mode;
 use crate::gui::GUI;
+use crate::prompt::{Prompt, PromptEvent, PromptField};
 use crate::server::Server;
 use termion::event::{Event, Key, MouseButton, MouseEvent};
 
@@ -149,9 +150,24 @@ impl GUI {
             Event::Key(Key::Ctrl('c')) => return false,
             Event::Key(Key::Ctrl('n')) => {
                 self.mode = Mode::NewServer;
-                self.ip_buffer = "".to_string();
-                self.port_buffer = "2345".to_string();
-                self.uuid_buffer = "0".to_string();
+                self.prompt = Some(Prompt::new(
+                    "Add a server",
+                    vec![
+                        PromptField::String {
+                            name: "IP",
+                            default: None,
+                        },
+                        PromptField::U16 {
+                            name: "Port",
+                            default: Some(2345),
+                        },
+                        PromptField::I64 {
+                            name: "UUID",
+                            default: None,
+                        },
+                    ],
+                    vec!["Connect", "Cancel"],
+                ));
             }
             Event::Key(Key::Alt('c')) => {
                 self.focus = Focus::ChannelList;
@@ -172,80 +188,30 @@ impl GUI {
                 Focus::Messages => (),
             }
         } else if self.mode == Mode::NewServer {
-            match key.clone() {
-                Event::Key(Key::Char('\n')) => {
-                    if self.sel_idx == 3 {
-                        //connect
-
-                        //TODO LOTS OF ERROR HANDLING LOL
-                        //this will break at the slight hint of any issue
-                        self.servers.push(
-                            Server::new(
-                                self.ip_buffer.clone(),
-                                self.port_buffer.parse::<u16>().unwrap(),
-                                self.uuid_buffer.parse::<i64>().unwrap(),
-                                self.tx.clone(),
-                            )
-                            .await,
-                        );
-                        self.servers.last_mut().unwrap().initialise().await.unwrap();
-                        self.mode = Mode::Messages;
-                    } else if self.sel_idx == 4 {
-                        //cancel
-                        self.mode = Mode::Messages;
-                    } else {
-                        if self.sel_idx < 4 {
-                            self.sel_idx += 1;
-                        }
-                    }
+            let p = self.prompt.as_mut().unwrap();
+            match p.handle_event(key) {
+                Some(PromptEvent::ButtonPressed("Connect")) => {
+                    // TODO LOTS OF ERROR HANDLING LOL
+                    // this will break at the slight hint of any issue
+                    // The unwraps here are ugly (TODO) but they should be ok, since we define the right types earlier on
+                    self.servers.push(
+                        Server::new(
+                            p.get_str("IP").unwrap().to_owned(),
+                            p.get_u16("Port").unwrap(),
+                            p.get_i64("UUID").unwrap(),
+                            self.tx.clone(),
+                        )
+                        .await,
+                    );
+                    self.servers.last_mut().unwrap().initialise().await.unwrap();
+                    self.mode = Mode::Messages;
                 }
-                Event::Key(Key::Down) => {
-                    if self.sel_idx < 4 {
-                        self.sel_idx += 1;
-                    }
+                Some(PromptEvent::ButtonPressed("Cancel")) => {
+                    self.mode = Mode::Messages;
+                    self.prompt = None;
                 }
-                Event::Key(Key::Up) => {
-                    if self.sel_idx > 0 {
-                        self.sel_idx -= 1;
-                    }
-                }
-                Event::Key(Key::Right) => {
-                    if self.sel_idx < 4 {
-                        self.sel_idx += 1;
-                    }
-                }
-                Event::Key(Key::Left) => {
-                    if self.sel_idx > 0 {
-                        self.sel_idx -= 1;
-                    }
-                }
-                Event::Key(Key::Backspace) => match self.sel_idx {
-                    0 => {
-                        if self.ip_buffer.len() > 0 {
-                            self.ip_buffer.pop();
-                        }
-                    }
-                    1 => {
-                        if self.port_buffer.len() > 0 {
-                            self.port_buffer.pop();
-                        }
-                    }
-                    2 => {
-                        if self.uuid_buffer.len() > 0 {
-                            self.uuid_buffer.pop();
-                        }
-                    }
-                    _ => (),
-                },
-
-                Event::Key(Key::Char(c)) => match self.sel_idx {
-                    0 => self.ip_buffer.push(c),
-                    1 => self.port_buffer.push(c),
-                    2 => self.uuid_buffer.push(c),
-                    _ => (),
-                },
-
-                _ => (),
+                Some(PromptEvent::ButtonPressed(_)) => unreachable!(), // no idea
+                None => (),
             }
         }
         true

@@ -7,6 +7,7 @@ use super::LocalMessage;
 use super::Mode;
 use crate::drawing::FmtString;
 use crate::drawing::Theme;
+use crate::prompt::{Prompt, PromptField};
 use crate::server::Server;
 use std::io::{stdout, Write};
 use std::net::SocketAddr;
@@ -26,19 +27,11 @@ pub struct GUI {
     pub theme: Theme,
     pub border_buffer: String,
     pub draw_border: bool,
-
     system_message: FmtString,
-
-    //TODO move to new struct?
-    pub sel_idx: usize,
-    pub ip_buffer: String,
-    pub port_buffer: String,
-    pub uuid_buffer: String,
-
+    pub prompt: Option<Prompt>,
     pub redraw: bool,
     pub last_w: u16,
     pub last_h: u16,
-    //    preferen
 }
 
 #[derive(Debug)]
@@ -108,10 +101,7 @@ impl GUI {
 
             system_message: FmtString::from_str(""),
 
-            sel_idx: 0,
-            ip_buffer: "".to_string(),
-            port_buffer: "".to_string(),
-            uuid_buffer: "".to_string(),
+            prompt: None,
             redraw: true,
             last_w: 0,
             last_h: 0,

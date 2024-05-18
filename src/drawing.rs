@@ -647,46 +647,6 @@ impl GUI {
     
     }
 
-    fn draw_new_server(&mut self) {
-        let (_width, height) = termion::terminal_size().unwrap();
-
-        let cur_x: u16;
-        let cur_y: u16;
-        match self.sel_idx {
-            0 => { cur_x = self.theme.left_margin as u16 + 11 + self.ip_buffer.len() as u16;   cur_y = height - 4; }
-            1 => { cur_x = self.theme.left_margin as u16 + 11 + self.port_buffer.len() as u16; cur_y = height - 3; }
-            2 => { cur_x = self.theme.left_margin as u16 + 11 + self.uuid_buffer.len() as u16; cur_y = height - 2; }
-            _ => { cur_x = 1; cur_y = 1; }
-        }
-        
-        write!(self.screen, "{}{}ip   : {}{}{}{}{}port : {}{}{}{}{}uuid : {}{}{}{}{}[connect]{}{} {}[cancel]{}{}{}",
-            if self.sel_idx == 0 { self.theme.servers.selected_text.clone() } else { Colour::new() },
-            termion::cursor::Goto(self.theme.left_margin as u16 + 4, height - 4),
-            termion::color::Fg(termion::color::Reset), termion::color::Bg(termion::color::Reset),
-            self.ip_buffer,
-
-            if self.sel_idx == 1 { self.theme.servers.selected_text.clone() } else { Colour::new() },
-            termion::cursor::Goto(self.theme.left_margin as u16 + 4, height - 3),
-            termion::color::Fg(termion::color::Reset), termion::color::Bg(termion::color::Reset),
-            self.port_buffer,
-
-            if self.sel_idx == 2 { self.theme.servers.selected_text.clone() } else { Colour::new() },
-            termion::cursor::Goto(self.theme.left_margin as u16 + 4, height - 2),
-            termion::color::Fg(termion::color::Reset), termion::color::Bg(termion::color::Reset),
-            self.uuid_buffer,
-            
-            termion::cursor::Goto(self.theme.left_margin as u16 + 4, height - 1),
-            if self.sel_idx == 3 { self.theme.servers.selected_text.clone() } else { Colour::new() }, 
-            termion::color::Bg(termion::color::Reset),
-            termion::color::Fg(termion::color::Reset),
-            if self.sel_idx == 4 { self.theme.servers.selected_text.clone() } else { Colour::new() },
-            termion::color::Bg(termion::color::Reset),
-            termion::color::Fg(termion::color::Reset),
-            termion::cursor::Goto(cur_x, cur_y),
-        ).unwrap();
-        
-    }
-    
     pub fn draw_screen(&mut self)  {
         let (width, height) = termion::terminal_size().unwrap();
     
@@ -716,7 +676,9 @@ impl GUI {
                 if self.servers.len() > 0 {
                     self.draw_servers();
                 }
-                self.draw_new_server();
+                let (_width, height) = termion::terminal_size().unwrap();
+                let y = height - self.prompt.as_ref().unwrap().height();
+                self.prompt.as_ref().unwrap().draw(&mut self.screen, self.theme.left_margin as u16 + 11, y, &self.theme);
             }
             Mode::Settings => {
                 
