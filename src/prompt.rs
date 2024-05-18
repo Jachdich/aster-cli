@@ -111,13 +111,22 @@ impl Prompt {
         }
     }
 
+    fn validate_field(&self, idx: usize) -> bool {
+        let data = &self.buffers[idx].data;
+        match self.fields[idx] {
+            PromptField::String { .. } => true,
+            PromptField::U16 { .. } => data.parse::<u16>().is_ok(),
+            PromptField::I64 { .. } => data.parse::<i64>().is_ok(),
+        }
+    }
+
     pub fn handle_event(&mut self, event: Event) -> Option<PromptEvent> {
         match event.clone() {
             Event::Key(Key::Char('\n')) => match self.selected {
                 Selection::Button(idx) => {
                     return Some(PromptEvent::ButtonPressed(self.buttons[idx]))
                 }
-                Selection::Field(idx) => self.increment_selection(),
+                Selection::Field(_) => self.increment_selection(),
             },
             Event::Key(Key::Down) => self.increment_selection(),
             Event::Key(Key::Up) => self.decrement_selection(),
@@ -140,6 +149,11 @@ impl Prompt {
             Event::Key(Key::Char(c)) => {
                 if let Selection::Field(idx) = self.selected {
                     self.buffers[idx].push(c);
+
+                    // if the user inputted something wrong, it's best to check after adding and just remove the lsat char if necessary
+                    if !self.validate_field(idx) {
+                        self.buffers[idx].pop();
+                    }
                 }
             }
 
@@ -153,35 +167,89 @@ impl Prompt {
     }
 
     pub fn draw<W: std::io::Write>(&self, screen: &mut W, x: u16, y: u16, theme: &Theme) {
-        // let cursor_x: u16;
-        // let cursor_y: u16;
-
+        let align = self
+            .fields
+            .iter()
+            .map(|field| field.name().len())
+            .max()
+            .unwrap(); // unwrap: we must have at least one field
         let mut idx = 0;
         for (field, buffer) in std::iter::zip(self.fields.iter(), self.buffers.iter()) {
-            if let Selection::Field(idx) = self.selected {
+            let idx2 = if let Selection::Field(idx2) = self.selected {
+                idx2
+            } else {
+                usize::MAX // I hope this will never equal idx
+            };
+
+            if idx2 == idx {
                 write!(
                     screen,
-                    "{}{}{} : {}{}{}",
+                    "{}{}{}{}{}{}: {}",
                     termion::cursor::Goto(x, y + idx as u16),
                     theme.servers.selected_text,
                     field.name(),
-                    buffer.data,
+                    " ".repeat(align - field.name().len()),
                     termion::color::Fg(termion::color::Reset),
                     termion::color::Bg(termion::color::Reset),
+                    buffer.data,
                 )
                 .unwrap();
             } else {
                 write!(
                     screen,
-                    "{}{} : {}",
+                    "{}{}{}: {}",
                     termion::cursor::Goto(x, y + idx as u16),
                     field.name(),
+                    " ".repeat(align - field.name().len()),
                     buffer.data,
                 )
                 .unwrap();
             }
             idx += 1;
         }
+
+        write!(
+            screen,
+            "{}",
+            termion::cursor::Goto(x, y + self.fields.len() as u16)
+        )
+        .unwrap();
+
+        idx = 0;
+        for button in &self.buttons {
+            let idx2 = if let Selection::Button(idx2) = self.selected {
+                idx2
+            } else {
+                usize::MAX // I hope this will never equal idx
+            };
+            if idx2 == idx {
+                write!(
+                    screen,
+                    "[{}{}{}{}] ",
+                    theme.servers.selected_text,
+                    button,
+                    termion::color::Fg(termion::color::Reset),
+                    termion::color::Bg(termion::color::Reset),
+                )
+                .unwrap();
+            } else {
+                write!(screen, "[{}] ", button).unwrap();
+            }
+            idx += 1;
+        }
+
+        write!(
+            screen,
+            "{}",
+            if let Selection::Field(idx) = self.selected {
+                let sel_x = x + align as u16 + 2 + self.buffers[idx].edit_position as u16;
+                let sel_y = y + idx as u16;
+                termion::cursor::Goto(sel_x, sel_y)
+            } else {
+                termion::cursor::Goto(1, 1)
+            }
+        )
+        .unwrap();
 
         // write!(
         //     screen,
