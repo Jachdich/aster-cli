@@ -5,6 +5,7 @@ use crate::DisplayMessage;
 use crate::server::Server;
 use crate::gui::GUI;
 use super::Mode;
+use fmtstring::{Colour, FmtString, FmtChar};
 
 fn centred(text: &str, width: usize) -> String {
     format!("{: ^1$}", text, width)
@@ -18,25 +19,20 @@ pub struct RGB {
 	pub default: bool,
 }*/
 
-#[derive(Clone, Debug)]
-pub struct FmtChar {
-	pub ch: String,
-	pub fg: String,
-	pub bg: String,
-}
+// #[derive(Clone, Debug)]
+// pub struct FmtChar {
+// 	pub ch: String,
+// 	pub fg: String,
+// 	pub bg: String,
+// }
 
-#[derive(Clone)]
-pub struct FmtString {
-    pub cont: Vec<FmtChar>,
-	dirty: bool,
-	cache: String,
-}
+// #[derive(Clone)]
+// pub struct FmtString {
+//     pub cont: Vec<FmtChar>,
+// 	dirty: bool,
+// 	cache: String,
+// }
 
-impl fmt::Display for FmtChar {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}{}{}", self.fg, self.bg, self.ch)
-    }
-}
 
 /*
 impl fmt::Display for FmtString {
@@ -49,115 +45,115 @@ impl fmt::Display for FmtString {
     }
 }*/
 
-impl From<String> for FmtString {
-    fn from(item: String) -> Self {
-        FmtString::from_str(&item)
-    }
-}
+// impl From<String> for FmtString {
+//     fn from(item: String) -> Self {
+//         FmtString::from_str(&item)
+//     }
+// }
 
-use core::ops::Index;
-use core::ops::IndexMut;
-use core::ops::Range;
+// use core::ops::Index;
+// use core::ops::IndexMut;
+// use core::ops::Range;
 
-impl Index<Range<usize>> for FmtString {
-    type Output = [FmtChar];
-    fn index(&self, range: Range<usize>) -> &Self::Output {
-        &self.cont[range]
-    }
-}
+// impl Index<Range<usize>> for FmtString {
+//     type Output = [FmtChar];
+//     fn index(&self, range: Range<usize>) -> &Self::Output {
+//         &self.cont[range]
+//     }
+// }
 
-impl Index<usize> for FmtString {
-    type Output = FmtChar;
-    fn index(&self, idx: usize) -> &Self::Output {
-        &self.cont[idx]
-    }
-}
+// impl Index<usize> for FmtString {
+//     type Output = FmtChar;
+//     fn index(&self, idx: usize) -> &Self::Output {
+//         &self.cont[idx]
+//     }
+// }
 
-impl IndexMut<usize> for FmtString {
-    fn index_mut(&mut self, idx: usize) -> &mut FmtChar {
-        self.dirty = true;
-        &mut self.cont[idx]
-    }
-}
+// impl IndexMut<usize> for FmtString {
+//     fn index_mut(&mut self, idx: usize) -> &mut FmtChar {
+//         self.dirty = true;
+//         &mut self.cont[idx]
+//     }
+// }
 
-impl FmtString {
-    pub fn from_str(data: &str) -> Self {
-        let mut buf: Vec<FmtChar> = Vec::new();
-        for ch in data.chars() {
-            buf.push(FmtChar { ch: ch.to_string(), fg: String::new(), bg: String::new() });
-        }
-        FmtString {
-            cont: buf,
-            dirty: true,
-            cache: String::new()
-        }
-    }
+// impl FmtString {
+//     pub fn from_str(data: &str) -> Self {
+//         let mut buf: Vec<FmtChar> = Vec::new();
+//         for ch in data.chars() {
+//             buf.push(FmtChar { ch: ch.to_string(), fg: String::new(), bg: String::new() });
+//         }
+//         FmtString {
+//             cont: buf,
+//             dirty: true,
+//             cache: String::new()
+//         }
+//     }
 
-    pub fn from_buffer(data: Vec<FmtChar>) -> Self {
-        FmtString {
-            cont: data,
-            dirty: true,
-            cache: String::new()
-        }
-    }
+//     pub fn from_buffer(data: Vec<FmtChar>) -> Self {
+//         FmtString {
+//             cont: data,
+//             dirty: true,
+//             cache: String::new()
+//         }
+//     }
 
-    pub fn from_slice(data: &[FmtChar]) -> Self {
-        FmtString {
-            cont: data.to_vec(),
-            dirty: true,
-            cache: String::new()
-        }
-    }
+//     pub fn from_slice(data: &[FmtChar]) -> Self {
+//         FmtString {
+//             cont: data.to_vec(),
+//             dirty: true,
+//             cache: String::new()
+//         }
+//     }
     
-    pub fn to_optimised_string(&self) -> String {
-        let mut buf = String::new();
-        let mut last_fg = String::new();
-        let mut last_bg = String::new();
-        for ch in &self.cont {
-            if last_fg != ch.fg {
-                buf.push_str(&ch.fg);
-                last_fg = ch.fg.clone();
-            }
-            if last_bg != ch.bg {
-                buf.push_str(&ch.bg);
-                last_bg = ch.bg.clone();
-            }
-            buf.push_str(&ch.ch);
-        }
-        buf
-    }
+//     pub fn to_optimised_string(&self) -> String {
+//         let mut buf = String::new();
+//         let mut last_fg = String::new();
+//         let mut last_bg = String::new();
+//         for ch in &self.cont {
+//             if last_fg != ch.fg {
+//                 buf.push_str(&ch.fg);
+//                 last_fg = ch.fg.clone();
+//             }
+//             if last_bg != ch.bg {
+//                 buf.push_str(&ch.bg);
+//                 last_bg = ch.bg.clone();
+//             }
+//             buf.push_str(&ch.ch);
+//         }
+//         buf
+//     }
 
-    pub fn as_str(&mut self) -> &str {
-        if self.dirty {
-            self.rebuild_cache();
-        }
+//     pub fn as_str(&mut self) -> &str {
+//         if self.dirty {
+//             self.rebuild_cache();
+//         }
         
-        &self.cache
-    }
+//         &self.cache
+//     }
 
-    pub fn len(&self) -> usize {
-        self.cont.len()
-    }
+//     pub fn len(&self) -> usize {
+//         self.cont.len()
+//     }
 
-    fn rebuild_cache(&mut self) {
-        self.cache = self.to_optimised_string();
-        self.dirty = false;
-    }
-}
+//     fn rebuild_cache(&mut self) {
+//         self.cache = self.to_optimised_string();
+//         self.dirty = false;
+//     }
+// }
 
-impl FmtChar {
-    pub fn from_json(val: &json::JsonValue) -> Self {
+// impl FmtChar {
+    pub fn fmtchar_from_json(val: &json::JsonValue) -> FmtChar {
         FmtChar {
-            ch: val[0].to_string(),
-            fg: parse_colour(&val[1].to_string(), false).to_string(),
-            bg: parse_colour(&val[2].to_string(), true).to_string(),
+            ch: val[0].as_str().unwrap().chars().next().unwrap(),
+            fg: parse_colour(&val[1].to_string()),
+            bg: parse_colour(&val[2].to_string()),
         }
     }
 
-    pub fn width(&self) -> u16 {
-        self.ch.chars().count() as u16
-    }
-}
+//     pub fn width(&self) -> u16 {
+//         self.ch.chars().count() as u16
+//     }
+// }
 /*
 impl RGB {
     pub fn new(r: u8, g: u8, b: u8) -> Self {
@@ -205,52 +201,58 @@ impl std::cmp::PartialEq for RGB {
     }
 }*/
 
-fn parse_colour(inp: &str, bg: bool) -> &'static str {
+fn parse_colour(inp: &str) -> Colour {
     if inp.starts_with("#") { panic!("RGB colours not currently supported"); }
 
     match inp {
-        "black"         => if bg { termion::color::Black.bg_str()        } else { termion::color::Black.fg_str() },
-        "blue"          => if bg { termion::color::Blue.bg_str()         } else { termion::color::Blue.fg_str() },
-        "cyan"          => if bg { termion::color::Cyan.bg_str()         } else { termion::color::Cyan.fg_str() },
-        "green"         => if bg { termion::color::Green.bg_str()        } else { termion::color::Green.fg_str() },
-        "light black"   => if bg { termion::color::LightBlack.bg_str()   } else { termion::color::LightBlack.fg_str() },
-        "light blue"    => if bg { termion::color::LightBlue.bg_str()    } else { termion::color::LightBlue.fg_str() },
-        "light green"   => if bg { termion::color::LightGreen.bg_str()   } else { termion::color::LightGreen.fg_str() },
-        "light magenta" => if bg { termion::color::LightMagenta.bg_str() } else { termion::color::LightMagenta.fg_str() },
-        "light red"     => if bg { termion::color::LightRed.bg_str()     } else { termion::color::LightRed.fg_str() },
-        "light white"   => if bg { termion::color::LightWhite.bg_str()   } else { termion::color::LightWhite.fg_str() },
-        "light yellow"  => if bg { termion::color::LightYellow.bg_str()  } else { termion::color::LightYellow.fg_str() },
-        "magenta"       => if bg { termion::color::Magenta.bg_str()      } else { termion::color::Magenta.fg_str() },
-        "red"           => if bg { termion::color::Red.bg_str()          } else { termion::color::Red.fg_str() },
-        "reset"         => if bg { termion::color::Reset.bg_str()        } else { termion::color::Reset.fg_str() },
-        "white"         => if bg { termion::color::White.bg_str()        } else { termion::color::White.fg_str() },
-        "yellow"        => if bg { termion::color::Yellow.bg_str()       } else { termion::color::Yellow.fg_str() },
-        _ => "",
+        "black"         => Colour::Black,
+        "blue"          => Colour::Blue,
+        "cyan"          => Colour::Cyan,
+        "green"         => Colour::Green,
+        "light black"   => Colour::LightBlack,
+        "light blue"    => Colour::LightBlue,
+        "light green"   => Colour::LightGreen,
+        "light magenta" => Colour::LightMagenta,
+        "light red"     => Colour::LightRed,
+        "light white"   => Colour::LightWhite,
+        "light yellow"  => Colour::LightYellow,
+        "magenta"       => Colour::Magenta,
+        "red"           => Colour::Red,
+        "reset"         => Colour::Default,
+        "white"         => Colour::White,
+        "yellow"        => Colour::Yellow,
+        _ => todo!(),
     }
 }
+
+// #[derive(Clone, Debug)]
+// pub struct Colour {
+//     pub fg: String,
+//     pub bg: String,
+// }
+
+// impl Colour {
+//     pub fn new() -> Self {
+//         Colour {
+//             fg: "".to_string(),
+//             bg: "".to_string(),
+//         }
+//     }
+
+//     pub fn from_strs(fg: &str, bg: &str) -> Colour {
+//         Colour { fg: fg.to_string(), bg: bg.to_string() }
+//     }
+// }
 
 #[derive(Clone, Debug)]
-pub struct Colour {
-    pub fg: String,
-    pub bg: String,
+pub struct Colour2 {
+    pub fg: Colour,
+    pub bg: Colour,
 }
 
-impl Colour {
-    pub fn new() -> Self {
-        Colour {
-            fg: "".to_string(),
-            bg: "".to_string(),
-        }
-    }
-
-    pub fn from_strs(fg: &str, bg: &str) -> Colour {
-        Colour { fg: fg.to_string(), bg: bg.to_string() }
-    }
-}
-
-impl fmt::Display for Colour {
+impl fmt::Display for Colour2 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}{}", self.fg, self.bg)
+        write!(f, "{}{}", self.fg.to_string(fmtstring::Ground::Foreground), self.bg.to_string(fmtstring::Ground::Background))
     }
 }
 
@@ -272,11 +274,11 @@ pub struct ThemedBorder {
 
 #[derive(Clone, Debug)]
 pub struct ThemedArea {
-    pub text: Colour,
-    pub selected_text: Colour,
-    pub unfocussed_selected_text: Colour,
-    pub error_text: Colour,
-    pub system_message: Colour,
+    pub text: Colour2,
+    pub selected_text: Colour2,
+    pub unfocussed_selected_text: Colour2,
+    pub error_text: Colour2,
+    pub system_message: Colour2,
     pub border: ThemedBorder,
 }
 
@@ -301,25 +303,25 @@ fn get_or<'a>(name: &str, main: &'a json::JsonValue, aux: &'a json::JsonValue) -
 impl ThemedArea {
     pub fn new(cfg: &json::JsonValue, fallback: &json::JsonValue) -> Self {
         ThemedArea {
-            text:                     Colour::from_strs(parse_colour(&get_or("text-foreground",                     cfg, fallback).to_string(), false),  parse_colour(&get_or("text-background", cfg, fallback).to_string(), true)),
-            selected_text:            Colour::from_strs(parse_colour(&get_or("selected-text-foreground",            cfg, fallback).to_string(), false),  parse_colour(&get_or("selected-text-background", cfg, fallback).to_string(), true)),
-            unfocussed_selected_text: Colour::from_strs(parse_colour(&get_or("unfocussed-selected-text-foreground", cfg, fallback).to_string(), false),  parse_colour(&get_or("unfocussed-selected-text-background", cfg, fallback).to_string(), true)),
-            error_text:               Colour::from_strs(parse_colour(&get_or("error-text-foreground",               cfg, fallback).to_string(), false),  parse_colour(&get_or("error-text-background", cfg, fallback).to_string(), true)),
-            system_message:           Colour::from_strs(parse_colour(&get_or("system-message-foreground",           cfg, fallback).to_string(), false),  parse_colour(&get_or("system-message-background", cfg, fallback).to_string(), true)),
+            text:                     Colour2 { fg: parse_colour(&get_or("text-foreground",                     cfg, fallback).to_string()), bg: parse_colour(&get_or("text-background", cfg, fallback).to_string())},
+            selected_text:            Colour2 { fg: parse_colour(&get_or("selected-text-foreground",            cfg, fallback).to_string()), bg: parse_colour(&get_or("selected-text-background", cfg, fallback).to_string())},
+            unfocussed_selected_text: Colour2 { fg: parse_colour(&get_or("unfocussed-selected-text-foreground", cfg, fallback).to_string()), bg: parse_colour(&get_or("unfocussed-selected-text-background", cfg, fallback).to_string())},
+            error_text:               Colour2 { fg: parse_colour(&get_or("error-text-foreground",               cfg, fallback).to_string()), bg: parse_colour(&get_or("error-text-background", cfg, fallback).to_string())},
+            system_message:           Colour2 { fg: parse_colour(&get_or("system-message-foreground",           cfg, fallback).to_string()), bg: parse_colour(&get_or("system-message-background", cfg, fallback).to_string())},
 
             border: ThemedBorder {
-                tl:           FmtChar::from_json(get_or("border-tl",           &cfg, &fallback)),
-                tr:           FmtChar::from_json(get_or("border-tr",           &cfg, &fallback)),
-                bl:           FmtChar::from_json(get_or("border-bl",           &cfg, &fallback)),
-                br:           FmtChar::from_json(get_or("border-br",           &cfg, &fallback)),
-                top:          FmtChar::from_json(get_or("border-top",          &cfg, &fallback)),
-                bottom:       FmtChar::from_json(get_or("border-bottom",       &cfg, &fallback)),
-                left:         FmtChar::from_json(get_or("border-left",         &cfg, &fallback)),
-                right:        FmtChar::from_json(get_or("border-right",        &cfg, &fallback)),
-                bottom_split: FmtChar::from_json(get_or("border-bottom-split", &cfg, &fallback)),
-                top_split:    FmtChar::from_json(get_or("border-top-split",    &cfg, &fallback)),
-                left_split:   FmtChar::from_json(get_or("border-left-split",   &cfg, &fallback)),
-                right_split:  FmtChar::from_json(get_or("border-right-split",  &cfg, &fallback)),
+                tl:           fmtchar_from_json(get_or("border-tl",           &cfg, &fallback)),
+                tr:           fmtchar_from_json(get_or("border-tr",           &cfg, &fallback)),
+                bl:           fmtchar_from_json(get_or("border-bl",           &cfg, &fallback)),
+                br:           fmtchar_from_json(get_or("border-br",           &cfg, &fallback)),
+                top:          fmtchar_from_json(get_or("border-top",          &cfg, &fallback)),
+                bottom:       fmtchar_from_json(get_or("border-bottom",       &cfg, &fallback)),
+                left:         fmtchar_from_json(get_or("border-left",         &cfg, &fallback)),
+                right:        fmtchar_from_json(get_or("border-right",        &cfg, &fallback)),
+                bottom_split: fmtchar_from_json(get_or("border-bottom-split", &cfg, &fallback)),
+                top_split:    fmtchar_from_json(get_or("border-top-split",    &cfg, &fallback)),
+                left_split:   fmtchar_from_json(get_or("border-left-split",   &cfg, &fallback)),
+                right_split:  fmtchar_from_json(get_or("border-right-split",  &cfg, &fallback)),
             }
         }
     }
@@ -379,48 +381,51 @@ impl Theme {
 }
 
 fn border_rep(c: &FmtChar, n: usize) -> String {
-    format!("{}{}{}{}{}", c.fg, c.bg, (&format!("{}", c.ch)).repeat(n), termion::color::Fg(termion::color::Reset), termion::color::Bg(termion::color::Reset))
+    format!("{}{}{}{}{}", c.fg.to_string(fmtstring::Ground::Foreground), c.bg.to_string(fmtstring::Ground::Background), (&format!("{}", c.ch)).repeat(n), termion::color::Fg(termion::color::Reset), termion::color::Bg(termion::color::Reset))
 }
 
 impl GUI {
     fn draw_servers(&mut self) {
         let (_width, height) = termion::terminal_size().unwrap();
+        let height = height - 1;
         let list_height: u16 = self.theme.get_list_height(height) as u16;
     
         let mut vert_pos = self.theme.get_servers_start_pos() as u16;
         let mut idx = 0;
-        if let Server::Online { channels, curr_channel, .. } = &self.servers[self.curr_server] {
-            for channel in channels {
-                write!(self.screen, "{}{}{}{}{}{}{}{}",
-                    termion::cursor::Goto(1 + self.theme.servers.border.left.width(), vert_pos),
-                    termion::color::Fg(termion::color::Reset), termion::color::Bg(termion::color::Reset),
+        if let Some(curr_server) = self.curr_server {
+            if let Server::Online { channels, curr_channel, .. } = &self.servers[curr_server] {
+                for channel in channels {
+                    write!(self.screen, "{}{}{}{}{}{}{}{}",
+                        termion::cursor::Goto(1 + self.theme.servers.border.left.width(), vert_pos),
+                        termion::color::Fg(termion::color::Reset), termion::color::Bg(termion::color::Reset),
     
-                    if curr_channel.is_some_and(|cc| idx == cc) { self.theme.servers.selected_text.clone() }
-                    else { self.theme.servers.text.clone() },
+                        if curr_channel.is_some_and(|cc| idx == cc) { self.theme.servers.selected_text.clone() }
+                        else { self.theme.servers.text.clone() },
                 
-                    channel.name,
-                    " ".repeat(self.theme.left_margin - channel.name.len()),
+                        channel.name,
+                        " ".repeat(self.theme.left_margin - channel.name.len()),
                 
-                    termion::color::Bg(termion::color::Reset),
-                    termion::color::Fg(termion::color::Reset),
-                ).unwrap();
-                vert_pos += 1;
-                idx += 1;
-                //TODO scrolling
+                        termion::color::Bg(termion::color::Reset),
+                        termion::color::Fg(termion::color::Reset),
+                    ).unwrap();
+                    vert_pos += 1;
+                    idx += 1;
+                    //TODO scrolling
+                }
             }
         }
-        vert_pos = self.theme.get_channels_start_pos(height) as u16;
+        vert_pos = self.theme.get_channels_start_pos(height) as u16 + 1;
         idx = 0;
         for server in &self.servers {
             write!(self.screen, "{}{}{}{}{}{}{}{}{}",
                 termion::cursor::Goto(1 + self.theme.servers.border.left.width(), vert_pos),
                 termion::color::Fg(termion::color::Reset), termion::color::Bg(termion::color::Reset),
     
-                if idx == self.curr_server { self.theme.servers.selected_text.clone() }
+                if Some(idx) == self.curr_server { self.theme.servers.selected_text.clone() }
                 else { self.theme.servers.text.clone() },
                 
                 if let Server::Offline { .. } = server { self.theme.servers.error_text.clone() }
-                else { Colour::new() },
+                else { Colour2 { fg: Colour::Default, bg: Colour::Default } },
                 
                 server.name().unwrap_or("Unknown Server"),
                 " ".repeat(self.theme.left_margin - server.name().unwrap_or("Unknown Server").len()),
@@ -435,15 +440,19 @@ impl GUI {
     
     fn draw_messages(&mut self) {
         // TODO: Possibly more efficient way of doing this without copying?
-        let messages = match &self.servers[self.curr_server] {
-            Server::Online { loaded_messages, .. } => loaded_messages.iter().map(|message| match message {
-                DisplayMessage::User(message) => FmtString::from_str(&message.content),
-                DisplayMessage::System(s) => s.clone(),
-            }).collect::<Vec<FmtString>>(),
-            _ => Vec::new(),
-        };
+        let nothing = Vec::new();
+        let messages = if let Some(curr_server) = self.curr_server {
+            match &self.servers[curr_server] {
+                Server::Online { loaded_messages, peers, .. } => loaded_messages,/*.iter().map(|message| match message {
+                    DisplayMessage::User(message) => FmtString::from_str(&format!("{}: {}", peers.get(&message.author_uuid).unwrap().name, message.content)),
+                    DisplayMessage::System(s) => s.clone(),
+                }).collect::<Vec<FmtString>>(),*/
+                _ => &nothing,
+            }
+        } else { &nothing };
 
         let (width, height) = termion::terminal_size().unwrap();
+        let height = height - 1;
         let max_messages = height as usize - (self.theme.messages.border.top.width() + self.theme.messages.border.bottom.width() + self.theme.edit.border.bottom.width() + self.theme.edit.border.top.width()) as usize;
         let len = messages.len();
     
@@ -484,7 +493,7 @@ impl GUI {
                         self.theme.left_margin as u16 + self.theme.servers.border.left.width() + self.theme.servers.border.right.width() + 2,
                         height - line - 1
                     ),
-                    FmtString::from_slice(&message[i * max_chars..e]).as_str(), " ".repeat(max_chars - message[i * max_chars..e].len())
+                    Into::<FmtString>::into(&message[i * max_chars..e]).to_str(), " ".repeat(max_chars - message[i * max_chars..e].len())
                 ));
                 line -= 1;
             }
@@ -497,6 +506,7 @@ impl GUI {
         if self.draw_border {
             self.draw_border = false;
             let (width, height) = termion::terminal_size().unwrap();
+            let height = height - 1;
             let channels_height = self.theme.get_channels_height(height);
             let servers_height  = self.theme.get_servers_height(height);
             
@@ -507,7 +517,7 @@ impl GUI {
             let space_padding = " ".repeat(width as usize - left_margin - total_border_width);
             let rs = termion::color::Fg(termion::color::Reset).to_string() + (&termion::color::Bg(termion::color::Reset).to_string());
 
-            self.border_buffer = format!("{0}{1}{sttl}{2}{3}\r\n{stleft}{4}{stright}{mleft}{5}{mright}\r\n{stleft}{6}{stright}{mleft}{7}{mright}\r\n{8}{9}{10}{11}{sbl}{12}{13}",
+            self.border_buffer = format!("{0}{1}{sttl}{2}{3}\r\n{stleft}{4}{stright}{mleft}{space_padding}{mright}\r\n{stleft}{5}{stright}{mleft}{space_padding}{mright}\r\n{6}{7}{8}{9}{sbl}{10}{11}",
             
     /*0*/       termion::cursor::Goto(1, 1),
     /*1*/       "",
@@ -531,12 +541,10 @@ impl GUI {
                 },
                 
     /*4*/       centred("Connected to", left_margin),
-    /*5*/       space_padding,
 
-    /*6*/       centred("cospox.com", self.theme.left_margin),
-    /*7*/       space_padding,
+    /*5*/       centred("cospox.com", self.theme.left_margin),
 
-    /*8*/       if self.theme.channels.border.bottom.width() > 0 {
+    /*6*/       if self.theme.channels.border.bottom.width() > 0 {
                     format!("{stleft_split}{}{stright_split}{mleft}{}{mright}\r\n",
                         border_rep(&self.theme.channels.border.bottom, left_margin),
                         space_padding,
@@ -549,7 +557,7 @@ impl GUI {
                     "".to_string()
                 },
 
-    /*9*/       format!("{cleft}{rs}{}{cright}{rs}{mleft}{}{mright}\r\n",
+    /*7*/       format!("{cleft}{rs}{}{cright}{rs}{mleft}{}{mright}\r\n",
                     " ".repeat(left_margin),
                     space_padding,
                     rs = rs,
@@ -559,7 +567,7 @@ impl GUI {
                     mleft = self.theme.messages.border.left,
                 ).repeat(channels_height),
 
-    /*10*/      if self.theme.channels.border.bottom.width() > 0 && self.theme.servers.border.top.width() > 0 {
+    /*8*/       if self.theme.channels.border.bottom.width() > 0 && self.theme.servers.border.top.width() > 0 {
                     format!("{cbl}{}{cbr}{mleft}{}{mright}\r\n{stl}{}{str}{mleft}{}{mright}\r\n", 
                         border_rep(&self.theme.channels.border.bottom, left_margin), 
                         space_padding,
@@ -594,7 +602,7 @@ impl GUI {
                     "".to_string()
                 },
                 
-    /*11*/      format!("{sleft}{rs}{}{sright}{rs}{mleft}{}{mright}\r\n", 
+    /*9*/       format!("{sleft}{rs}{}{sright}{rs}{mleft}{}{mright}\r\n", 
                     " ".repeat(self.theme.left_margin), 
                     space_padding,
                     rs = rs,
@@ -604,9 +612,9 @@ impl GUI {
                     mleft = self.theme.messages.border.left,
                 ).repeat(servers_height),
 
-    /*12*/      border_rep(&self.theme.servers.border.bottom, left_margin),
+    /*10*/      border_rep(&self.theme.servers.border.bottom, left_margin),
 
-    /*13*/      if self.theme.messages.border.left.width() == 0 || self.theme.servers.border.right.width() == 0 {
+    /*11*/      if self.theme.messages.border.left.width() == 0 || self.theme.servers.border.right.width() == 0 {
                     format!("{sbottom_split}{}{mbr}", 
                         border_rep(&self.theme.messages.border.bottom, width as usize - left_margin - total_border_width),
 
@@ -663,6 +671,8 @@ impl GUI {
             self.draw_border();
             self.redraw = true;
         }
+
+        write!(self.screen, "{}{}{}", termion::cursor::Goto(1, height), termion::clear::CurrentLine, self.system_message.to_optimised_string()).unwrap();
     
         match self.mode {
             Mode::Messages => {
@@ -670,15 +680,15 @@ impl GUI {
                     self.draw_messages();
                     self.draw_servers();
                 }
-                write!(self.screen, "{}{}", termion::cursor::Goto(self.theme.left_margin as u16 + self.theme.servers.border.left.width() + self.theme.servers.border.right.width() + 2, height - 1), self.buffer).unwrap();
+                write!(self.screen, "{}{}", termion::cursor::Goto(self.theme.left_margin as u16 + self.theme.servers.border.left.width() + self.theme.servers.border.right.width() + 2, height - 2), self.buffer).unwrap();
             }
             Mode::NewServer => {
                 if self.servers.len() > 0 {
                     self.draw_servers();
                 }
                 let (_width, height) = termion::terminal_size().unwrap();
-                let y = height - self.prompt.as_ref().unwrap().height();
-                self.prompt.as_ref().unwrap().draw(&mut self.screen, self.theme.left_margin as u16 + 11, y, &self.theme);
+                let y = height - self.prompt.as_ref().unwrap().height() - 1;
+                self.prompt.as_ref().unwrap().draw(&mut self.screen, self.theme.left_margin as u16 + 4, y, &self.theme);
             }
             Mode::Settings => {
                 

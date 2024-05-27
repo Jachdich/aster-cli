@@ -64,7 +64,6 @@ pub enum FieldError {
 
 impl Prompt {
     pub fn new(name: &'static str, fields: Vec<PromptField>, buttons: Vec<&'static str>) -> Self {
-        let num_fields = fields.len();
         let buffers = fields
             .iter()
             .map(|field| EditBuffer::new(field.default_string()))
@@ -128,8 +127,8 @@ impl Prompt {
                 }
                 Selection::Field(_) => self.increment_selection(),
             },
-            Event::Key(Key::Down) => self.increment_selection(),
-            Event::Key(Key::Up) => self.decrement_selection(),
+            Event::Key(Key::Down) | Event::Key(Key::Char('\t')) => self.increment_selection(),
+            Event::Key(Key::Up) | Event::Key(Key::BackTab) => self.decrement_selection(),
 
             Event::Key(Key::Right) => match self.selected {
                 Selection::Field(idx) => self.buffers[idx].right(),

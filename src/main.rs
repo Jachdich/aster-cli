@@ -2,20 +2,20 @@ extern crate dirs;
 extern crate termion;
 extern crate tokio;
 mod api;
-use termion::event::Event;
 
 use crate::termion::input::TermRead;
+use fmtstring::FmtString;
 use std::io::stdin;
 use std::net::SocketAddr;
+use termion::event::{Event, Key};
+use tokio::sync::broadcast;
 
 mod drawing;
 mod events;
 mod gui;
-mod parser;
 mod prompt;
 mod server;
 
-use drawing::FmtString;
 use gui::GUI;
 
 #[derive(Clone, Copy, PartialEq)]
@@ -34,7 +34,7 @@ pub enum Focus {
 }
 
 pub enum DisplayMessage {
-    User(api::Message),
+    User(FmtString),
     System(FmtString),
 }
 
@@ -49,6 +49,9 @@ fn process_input(tx: std::sync::mpsc::Sender<LocalMessage>) {
     for event in stdin.events() {
         tx.send(LocalMessage::Keyboard(event.as_ref().unwrap().clone()))
             .unwrap();
+        if let Event::Key(Key::Ctrl('c')) = event.unwrap() {
+            return;
+        }
     }
 }
 
@@ -59,11 +62,14 @@ async fn main() {
         std::sync::mpsc::Receiver<LocalMessage>,
     ) = std::sync::mpsc::channel();
 
+    let (cancel_tx, cancel_rx) = broadcast::channel(1);
+    drop(cancel_rx); // bruh why does it give me a rx, I just want a tx for now
+
     let input_tx = tx.clone();
     tokio::spawn(async move {
         process_input(input_tx);
     });
 
-    let mut gui = GUI::new(tx, rx).await;
+    let mut gui = GUI::new(tx, rx, cancel_tx).await;
     gui.run_gui().await;
 }

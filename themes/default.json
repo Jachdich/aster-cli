@@ -26,16 +26,16 @@
 },
 
 "edit": {
-    "border-top": ["", "reset", "reset"],
-    "border-bottom": ["", "reset", "reset"]
+    "border-top": ["━", "reset", "reset"],
+    "border-bottom": ["━", "reset", "reset"]
 },
 
 "messages": {
-    "border-left": ["", "reset", "reset"]
+    "border-left": ["┃", "reset", "reset"]
 },
 
 "servers": {
-    "border-top": ["", "reset", "reset"]
+    "border-top": ["━", "reset", "reset"]
 }
 
 }

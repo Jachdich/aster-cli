@@ -4,25 +4,55 @@ extern crate tokio;
 use crate::api::{self, Channel, Request, Response, User};
 use crate::tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 use crate::LocalMessage;
+use base64::prelude::*;
+use fmtstring::FmtString;
 use serde::ser::{Serialize, SerializeStruct, Serializer};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::mpsc::Sender;
 use tokio::io::{ReadHalf, WriteHalf};
 use tokio::net::TcpStream;
+use tokio::sync::broadcast::Receiver;
 // use tokio_native_tls::TlsStream;
 
-use super::DisplayMessage;
-
 type SocketStream = TcpStream;
+
+// for info like pfp alreadt converted to a fmtstring
+pub struct Peer {
+    pub uuid: i64,
+    pub name: String,
+    pub pfp: FmtString,
+}
+
+impl Peer {
+    fn from_user(user: User) -> Self {
+        let pfp_bytes = BASE64_STANDARD.decode(user.pfp).unwrap();
+        let img = image::load_from_memory(&pfp_bytes)
+            .unwrap()
+            .resize_exact(14, 16, image::imageops::FilterType::Triangle)
+            .into_rgb8();
+
+        let matrix = dct_tiv::create_calibration_matrices(true);
+        let palette = dct_tiv::get_palette();
+        let pfp = dct_tiv::textify_dct(&img, &matrix, &palette)
+            .into_iter()
+            .next()
+            .unwrap();
+        Self {
+            uuid: user.uuid,
+            name: user.name,
+            pfp, // TODO assert len == 1
+        }
+    }
+}
 
 // TODO: which of name, uname and uuid, if any, should be Options?
 pub enum Server {
     Online {
-        loaded_messages: Vec<DisplayMessage>,
+        loaded_messages: Vec<FmtString>,
         channels: Vec<Channel>,
         curr_channel: Option<usize>,
-        peers: HashMap<i64, User>,
+        peers: HashMap<i64, Peer>,
         write_half: WriteHalf<SocketStream>,
         remote_addr: SocketAddr,
         ip: String,
@@ -51,15 +81,6 @@ impl Serialize for Server {
         state.end()
     }
 }
-
-// pub fn to_json(&self) -> json::JsonValue {
-//     json::object! {
-//         name: self.name().into(),
-//         ip: self.ip().clone(),
-//         port: self.port(),
-//         uuid: self.uuid(),
-//     }
-// }
 
 impl Server {
     pub fn ip(&self) -> &str {
@@ -93,8 +114,18 @@ impl Server {
     }
 }
 
+pub enum Identification<'a> {
+    Username(&'a str),
+    Uuid(i64),
+}
+
 impl Server {
-    pub async fn new(ip: String, port: u16, uuid: i64, tx: Sender<LocalMessage>) -> Self {
+    pub async fn new(
+        ip: String,
+        port: u16,
+        tx: Sender<LocalMessage>,
+        mut cancel: Receiver<()>,
+    ) -> Self {
         match TcpStream::connect((ip.as_str(), port)).await {
             Ok(socket) => {
                 let addr = socket.peer_addr().unwrap(); // TODO figure out if this is ever gonna cause a problem
@@ -110,7 +141,10 @@ impl Server {
                 let net_tx = tx.clone();
                 // let the_ip = ip.to_owned();
                 tokio::spawn(async move {
-                    Self::run_network(net_tx, read_half, addr).await;
+                    tokio::select! {
+                        _ = Self::run_network(net_tx, read_half, addr) => {},
+                        _ = cancel.recv() => {}, // we need to shut down the connection rn
+                    }
                 });
                 Self::Online {
                     loaded_messages: Vec::new(),
@@ -122,7 +156,7 @@ impl Server {
                     ip,
                     port,
                     name: None,
-                    uuid: Some(uuid),
+                    uuid: None,
                     uname: None,
                 }
             }
@@ -131,7 +165,7 @@ impl Server {
                 ip,
                 port,
                 name: None,
-                uuid: Some(uuid),
+                uuid: None,
                 uname: None,
             },
         }
@@ -179,21 +213,28 @@ impl Server {
         Ok(())
     }
 
-    pub async fn initialise(&mut self) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    pub async fn initialise(
+        &mut self,
+        id: Identification<'_>,
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         use Request::*;
-        if let Some(uuid) = self.uuid() {
-            self.write(LoginRequest {
-                passwd: "a".into(),
-                uname: None,
-                uuid: Some(uuid),
-            })
-            .await?;
-        } else {
-            self.write(RegisterRequest {
-                passwd: "a".into(),
-                uname: self.uname().unwrap().into(),
-            })
-            .await?;
+        match id {
+            Identification::Uuid(uuid) => {
+                self.write(LoginRequest {
+                    passwd: "a".into(),
+                    uname: None,
+                    uuid: Some(uuid),
+                })
+                .await?;
+            }
+            Identification::Username(username) => {
+                self.write(LoginRequest {
+                    passwd: "a".into(),
+                    uname: Some(username.into()),
+                    uuid: None,
+                })
+                .await?;
+            }
         }
         self.write(GetIconRequest).await?;
         self.write(GetNameRequest).await?;
@@ -232,6 +273,22 @@ impl Server {
         }
     }
 
+    fn format_message(msg: &api::Message, peers: &HashMap<i64, Peer>) -> FmtString {
+        let formatted = FmtString::from_str(&format!(
+            " {}: {}",
+            peers.get(&msg.author_uuid).unwrap().name,
+            msg.content
+        ));
+        // let mut ks: Vec<&i64> = peers.keys().collect();
+        // use rand::prelude::*;
+        // let mut rng = rand::thread_rng();
+        // ks.shuffle(&mut rng);
+
+        // let pfp = peers.get(ks[0]).unwrap().pfp.clone();
+        let pfp = peers.get(&msg.author_uuid).unwrap().pfp.clone();
+        FmtString::concat(pfp, formatted)
+    }
+
     pub fn handle_network_packet(&mut self, response: Response) {
         if let Self::Online {
             peers,
@@ -246,7 +303,9 @@ impl Server {
             match response {
                 GetMetadataResponse { data } => {
                     for elem in data {
-                        peers.insert(elem.uuid, elem);
+                        let uuid = elem.uuid;
+                        let peer = Peer::from_user(elem);
+                        peers.insert(uuid, peer);
                     }
                 }
                 RegisterResponse { uuid: new_uuid } => *uuid = Some(new_uuid),
@@ -254,9 +313,11 @@ impl Server {
                 ListChannelsResponse { data } => *channels = data,
                 HistoryResponse { data } => loaded_messages.extend(
                     data.into_iter()
-                        .map(|message| DisplayMessage::User(message)),
+                        .map(|message| Self::format_message(&message, peers)),
                 ),
-                ContentResponse(message) => loaded_messages.push(DisplayMessage::User(message)),
+                ContentResponse(message) => {
+                    loaded_messages.push(Self::format_message(&message, peers))
+                }
                 _ => (),
             }
         }

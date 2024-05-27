@@ -5,14 +5,15 @@ use super::DisplayMessage;
 use super::Focus;
 use super::LocalMessage;
 use super::Mode;
-use crate::drawing::FmtString;
 use crate::drawing::Theme;
 use crate::prompt::{Prompt, PromptField};
 use crate::server::Server;
+use fmtstring::FmtString;
 use std::io::{stdout, Write};
 use std::net::SocketAddr;
 use std::sync::mpsc::{Receiver, Sender};
 use termion::raw::IntoRawMode;
+use tokio::sync::broadcast;
 
 pub struct GUI {
     pub scroll: isize,
@@ -20,27 +21,29 @@ pub struct GUI {
     pub tx: Sender<LocalMessage>,
     pub rx: Receiver<LocalMessage>,
     pub servers: Vec<Server>, // FEAT server folders
-    pub curr_server: usize,
+    pub curr_server: Option<usize>,
     pub mode: Mode,
     pub focus: Focus,
     pub screen: termion::raw::RawTerminal<termion::input::MouseTerminal<std::io::Stdout>>,
     pub theme: Theme,
     pub border_buffer: String,
     pub draw_border: bool,
-    system_message: FmtString,
+    pub system_message: FmtString,
     pub prompt: Option<Prompt>,
     pub redraw: bool,
     pub last_w: u16,
     pub last_h: u16,
+    pub cancel: broadcast::Sender<()>,
 }
 
 #[derive(Debug)]
-pub struct CommandError(String);
+pub struct CommandError(pub String);
 
 impl GUI {
     pub async fn new(
         tx: std::sync::mpsc::Sender<LocalMessage>,
         rx: std::sync::mpsc::Receiver<LocalMessage>,
+        cancel: broadcast::Sender<()>,
     ) -> Self {
         // let default_config: json::JsonValue = json::object! {
         //     servers: [],
@@ -91,7 +94,7 @@ impl GUI {
             tx,
             rx,
             servers,
-            curr_server: 0,
+            curr_server: None,
             mode: Mode::Messages,
             focus: Focus::Edit,
             screen,
@@ -105,17 +108,19 @@ impl GUI {
             redraw: true,
             last_w: 0,
             last_h: 0,
+
+            cancel,
         }
     }
 
     pub fn send_system(&mut self, message: &str) {
         let mut coloured_string: FmtString = format!("System: {}", message).into();
-        for n in 0..6 {
-            coloured_string[n].fg = self.theme.messages.system_message.fg.clone();
-            coloured_string[n].bg = self.theme.messages.system_message.bg.clone();
-        }
-        coloured_string[7].fg = self.theme.messages.text.fg.clone();
-        coloured_string[7].bg = self.theme.messages.text.bg.clone();
+        // for n in 0..6 {
+        //     coloured_string[n].fg = self.theme.messages.system_message.fg.clone();
+        //     coloured_string[n].bg = self.theme.messages.system_message.bg.clone();
+        // }
+        // coloured_string[7].fg = self.theme.messages.text.fg.clone();
+        // coloured_string[7].bg = self.theme.messages.text.bg.clone();
 
         self.system_message = coloured_string;
     }
@@ -131,37 +136,44 @@ impl GUI {
 
             "/join" => {
                 // TODO this is awful. Fix it.
-                let channel_uuid = if let Server::Online {
-                    loaded_messages,
-                    channels,
-                    curr_channel,
-                    ..
-                } = &mut self.servers[self.curr_server]
-                {
-                    loaded_messages.clear();
+                if let Some(curr_server) = self.curr_server {
+                    let channel_uuid = if let Server::Online {
+                        loaded_messages,
+                        channels,
+                        curr_channel,
+                        ..
+                    } = &mut self.servers[curr_server]
+                    {
+                        loaded_messages.clear();
 
-                    *curr_channel = Some(channels.iter().position(|r| r.name == argv[1]).ok_or(
-                        CommandError(format!(
-                            "Channel '{}' does not exist in this server",
-                            argv[1]
-                        )),
-                    )?);
-                    channels[curr_channel.unwrap()].uuid
+                        *curr_channel =
+                            Some(channels.iter().position(|r| r.name == argv[1]).ok_or(
+                                CommandError(format!(
+                                    "Channel '{}' does not exist in this server",
+                                    argv[1]
+                                )),
+                            )?);
+                        channels[curr_channel.unwrap()].uuid
+                    } else {
+                        return Err(CommandError(
+                            "This server is offline, cannot join any channels!".into(),
+                        ));
+                    };
+
+                    //It is possible that this unwrap fails due to the time interval since it was last checked. fuck it I cba
+                    self.servers[curr_server]
+                        .write(Request::HistoryRequest {
+                            num: 100,
+                            channel: channel_uuid,
+                            before_message: None,
+                        })
+                        .await
+                        .unwrap();
                 } else {
                     return Err(CommandError(
-                        "This server is offline, cannot join any channels!".into(),
+                        "No server is selected you silly goose!".into(),
                     ));
-                };
-
-                //It is possible that this unwrap fails due to the time interval since it was last checked. fuck it I cba
-                self.servers[self.curr_server]
-                    .write(Request::HistoryRequest {
-                        num: 100,
-                        channel: channel_uuid,
-                        before_message: None,
-                    })
-                    .await
-                    .unwrap();
+                }
 
                 Ok(())
             }
@@ -207,6 +219,7 @@ impl GUI {
                 LocalMessage::Keyboard(key) => {
                     if !self.handle_keyboard(key).await {
                         self.save_config();
+                        self.cancel.send(());
                         return;
                     }
                 }
