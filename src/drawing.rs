@@ -10,196 +10,16 @@ use fmtstring::{Colour, FmtString, FmtChar};
 fn centred(text: &str, width: usize) -> String {
     format!("{: ^1$}", text, width)
 }
-/*
-#[derive(Copy, Clone, Debug)]
-pub struct RGB {
-	pub r: u8,
-	pub g: u8,
-	pub b: u8,
-	pub default: bool,
-}*/
-
-// #[derive(Clone, Debug)]
-// pub struct FmtChar {
-// 	pub ch: String,
-// 	pub fg: String,
-// 	pub bg: String,
-// }
-
-// #[derive(Clone)]
-// pub struct FmtString {
-//     pub cont: Vec<FmtChar>,
-// 	dirty: bool,
-// 	cache: String,
-// }
-
-
-/*
-impl fmt::Display for FmtString {
-    fn fmt(&mut self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.dirty {
-            self.rebuild_cache();
-        }
-        
-        write!(f, "{}", self.cache)
-    }
-}*/
-
-// impl From<String> for FmtString {
-//     fn from(item: String) -> Self {
-//         FmtString::from_str(&item)
-//     }
-// }
-
-// use core::ops::Index;
-// use core::ops::IndexMut;
-// use core::ops::Range;
-
-// impl Index<Range<usize>> for FmtString {
-//     type Output = [FmtChar];
-//     fn index(&self, range: Range<usize>) -> &Self::Output {
-//         &self.cont[range]
-//     }
-// }
-
-// impl Index<usize> for FmtString {
-//     type Output = FmtChar;
-//     fn index(&self, idx: usize) -> &Self::Output {
-//         &self.cont[idx]
-//     }
-// }
-
-// impl IndexMut<usize> for FmtString {
-//     fn index_mut(&mut self, idx: usize) -> &mut FmtChar {
-//         self.dirty = true;
-//         &mut self.cont[idx]
-//     }
-// }
-
-// impl FmtString {
-//     pub fn from_str(data: &str) -> Self {
-//         let mut buf: Vec<FmtChar> = Vec::new();
-//         for ch in data.chars() {
-//             buf.push(FmtChar { ch: ch.to_string(), fg: String::new(), bg: String::new() });
-//         }
-//         FmtString {
-//             cont: buf,
-//             dirty: true,
-//             cache: String::new()
-//         }
-//     }
-
-//     pub fn from_buffer(data: Vec<FmtChar>) -> Self {
-//         FmtString {
-//             cont: data,
-//             dirty: true,
-//             cache: String::new()
-//         }
-//     }
-
-//     pub fn from_slice(data: &[FmtChar]) -> Self {
-//         FmtString {
-//             cont: data.to_vec(),
-//             dirty: true,
-//             cache: String::new()
-//         }
-//     }
-    
-//     pub fn to_optimised_string(&self) -> String {
-//         let mut buf = String::new();
-//         let mut last_fg = String::new();
-//         let mut last_bg = String::new();
-//         for ch in &self.cont {
-//             if last_fg != ch.fg {
-//                 buf.push_str(&ch.fg);
-//                 last_fg = ch.fg.clone();
-//             }
-//             if last_bg != ch.bg {
-//                 buf.push_str(&ch.bg);
-//                 last_bg = ch.bg.clone();
-//             }
-//             buf.push_str(&ch.ch);
-//         }
-//         buf
-//     }
-
-//     pub fn as_str(&mut self) -> &str {
-//         if self.dirty {
-//             self.rebuild_cache();
-//         }
-        
-//         &self.cache
-//     }
-
-//     pub fn len(&self) -> usize {
-//         self.cont.len()
-//     }
-
-//     fn rebuild_cache(&mut self) {
-//         self.cache = self.to_optimised_string();
-//         self.dirty = false;
-//     }
-// }
-
-// impl FmtChar {
-    pub fn fmtchar_from_json(val: &json::JsonValue) -> FmtChar {
-        FmtChar {
-            ch: val[0].as_str().unwrap().chars().next().unwrap(),
-            fg: parse_colour(&val[1].to_string()),
-            bg: parse_colour(&val[2].to_string()),
-        }
-    }
-
-//     pub fn width(&self) -> u16 {
-//         self.ch.chars().count() as u16
-//     }
-// }
-/*
-impl RGB {
-    pub fn new(r: u8, g: u8, b: u8) -> Self {
-        RGB {
-            r: r, g: g, b: b,
-            default: false
-        }
-    }
-    
-    pub fn from_html(n: u32) -> Self {
-    	let r: u8 = ((n >> 16) & 0xFF) as u8;
-    	let g: u8 = ((n >> 8)  & 0xFF) as u8;
-    	let b: u8 = ((n >> 0)  & 0xFF) as u8;
-    	RGB {
-    		r:r, g:g, b:b, default:false
-    	}
-    }
-    pub fn to_fg(&self) -> termion::color::Fg<termion::color::Rgb> {
-    	return termion::color::Fg(termion::color::Rgb(self.r, self.g, self.b));
-    }
-    pub fn to_bg(&self) -> termion::color::Bg<termion::color::Rgb> {
-    	return termion::color::Bg(termion::color::Rgb(self.r, self.g, self.b));
-    }
-    pub fn get_inverted(&self) -> RGB {
-    	let txt_col: RGB;
-        if self.r as u16 + self.g as u16 + self.b as u16 > 384 {
-        	txt_col = RGB::new(0, 0, 0);
-        } else {
-        	txt_col = RGB::new(255, 255, 255);
-        }
-        return txt_col;
-    }
-
-    pub fn to_html_string(&self) -> String {
-    	if self.default {
-    		return "default".to_string();
-    	}
-    	format!("#{:02X?}{:02X?}{:02X?}", self.r, self.g, self.b)
-    }
+fn fmtchar_from_json_impl(val: &json::JsonValue) -> Option<FmtChar> {
+    Some(FmtChar {
+        ch: val[0].as_str()?.chars().next()?,
+        fg: parse_colour(&val[1].as_str()?),
+        bg: parse_colour(&val[2].as_str()?),
+    })
 }
-
-impl std::cmp::PartialEq for RGB {
-    fn eq(&self, other: &Self) -> bool {
-        self.r == other.r && self.g == other.g && self.b == other.b
-    }
-}*/
+pub fn fmtchar_from_json(val: &json::JsonValue) -> OptionalFmtChar {
+    OptionalFmtChar(fmtchar_from_json_impl(val))
+}
 
 fn parse_colour(inp: &str) -> Colour {
     if inp.starts_with("#") { panic!("RGB colours not currently supported"); }
@@ -245,6 +65,24 @@ fn parse_colour(inp: &str) -> Colour {
 // }
 
 #[derive(Clone, Debug)]
+pub struct OptionalFmtChar(Option<FmtChar>);
+
+impl OptionalFmtChar {
+    pub fn width(&self) -> u16 {
+        if self.0.is_some() { 1 } else { 0 }
+    }
+}
+
+impl fmt::Display for OptionalFmtChar {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.0 {
+            Some(c) => write!(f, "{}", c),
+            None => Ok(()),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct Colour2 {
     pub fg: Colour,
     pub bg: Colour,
@@ -258,18 +96,18 @@ impl fmt::Display for Colour2 {
 
 #[derive(Clone, Debug)]
 pub struct ThemedBorder {
-    pub tl: FmtChar,
-    pub tr: FmtChar,
-    pub bl: FmtChar,
-    pub br: FmtChar,
-    pub top: FmtChar,
-    pub bottom: FmtChar,
-    pub left: FmtChar,
-    pub right: FmtChar,
-    pub bottom_split: FmtChar,
-    pub top_split: FmtChar,
-    pub left_split: FmtChar,
-    pub right_split: FmtChar,
+    pub tl: OptionalFmtChar,
+    pub tr: OptionalFmtChar,
+    pub bl: OptionalFmtChar,
+    pub br: OptionalFmtChar,
+    pub top: OptionalFmtChar,
+    pub bottom: OptionalFmtChar,
+    pub left: OptionalFmtChar,
+    pub right: OptionalFmtChar,
+    pub bottom_split: OptionalFmtChar,
+    pub top_split: OptionalFmtChar,
+    pub left_split: OptionalFmtChar,
+    pub right_split: OptionalFmtChar,
 }
 
 #[derive(Clone, Debug)]
@@ -380,8 +218,12 @@ impl Theme {
     }
 }
 
-fn border_rep(c: &FmtChar, n: usize) -> String {
-    format!("{}{}{}{}{}", c.fg.to_string(fmtstring::Ground::Foreground), c.bg.to_string(fmtstring::Ground::Background), (&format!("{}", c.ch)).repeat(n), termion::color::Fg(termion::color::Reset), termion::color::Bg(termion::color::Reset))
+fn border_rep(c: &OptionalFmtChar, n: usize) -> String {
+    if let Some(c) = c.0 {
+        format!("{}{}{}{}{}", c.fg.to_string(fmtstring::Ground::Foreground), c.bg.to_string(fmtstring::Ground::Background), (&format!("{}", c.ch)).repeat(n), termion::color::Fg(termion::color::Reset), termion::color::Bg(termion::color::Reset))
+    } else {
+        "".into()
+    }
 }
 
 impl GUI {
