@@ -5,6 +5,7 @@ use crate::api::{self, Channel, Request, Response, User};
 use crate::tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 use crate::LocalMessage;
 use base64::prelude::*;
+use dct_tiv::Matrix;
 use fmtstring::FmtString;
 use serde::ser::{Serialize, SerializeStruct, Serializer};
 use std::collections::HashMap;
@@ -24,6 +25,19 @@ pub struct Peer {
     pub pfp: FmtString,
 }
 
+// aight fuck you, global mutable variables i dont care
+static mut CALIBRATION_MATRICES: Vec<Matrix<7, 16>> = Vec::new();
+static mut PALETTE: Vec<char> = Vec::new();
+
+pub fn init_calibration_matrices() {
+    // SAFETY
+    // This function is called once at the start of the program. A race condition should be impossible.
+    unsafe {
+        CALIBRATION_MATRICES = dct_tiv::create_calibration_matrices(true);
+        PALETTE = dct_tiv::get_palette();
+    }
+}
+
 impl Peer {
     fn from_user(user: User) -> Self {
         let pfp_bytes = BASE64_STANDARD.decode(user.pfp).unwrap();
@@ -32,9 +46,8 @@ impl Peer {
             .resize_exact(14, 16, image::imageops::FilterType::Triangle)
             .into_rgb8();
 
-        let matrix = dct_tiv::create_calibration_matrices(true);
-        let palette = dct_tiv::get_palette();
-        let pfp = dct_tiv::textify_dct(&img, &matrix, &palette)
+        // yea this requires unsafe, but it avoids a dependency, and is perfectly safe™ I think
+        let pfp = unsafe { dct_tiv::textify_dct(&img, &CALIBRATION_MATRICES, &PALETTE) }
             .into_iter()
             .next()
             .unwrap();
@@ -112,6 +125,31 @@ impl Server {
             }
         }
     }
+    pub fn set_ip(&mut self, v: String) {
+        match self {
+            Self::Online { ip, .. } | Self::Offline { ip, .. } => *ip = v,
+        }
+    }
+    pub fn set_port(&mut self, v: u16) {
+        match self {
+            Self::Online { port, .. } | Self::Offline { port, .. } => *port = v,
+        }
+    }
+    pub fn set_uuid(&mut self, v: i64) {
+        match self {
+            Self::Online { uuid, .. } | Self::Offline { uuid, .. } => *uuid = Some(v),
+        }
+    }
+    pub fn set_name(&mut self, v: String) {
+        match self {
+            Self::Online { name, .. } | Self::Offline { name, .. } => *name = Some(v),
+        }
+    }
+    pub fn set_uname(&mut self, v: String) {
+        match self {
+            Self::Online { uname, .. } | Self::Offline { uname, .. } => *uname = Some(v),
+        }
+    }
 }
 
 pub enum Identification<'a> {
@@ -171,6 +209,48 @@ impl Server {
         }
     }
 
+    pub fn to_offline(self, offline_reason: String) -> Self {
+        match self {
+            Self::Online {
+                ip,
+                port,
+                name,
+                uuid,
+                uname,
+                ..
+            } => Server::Offline {
+                offline_reason,
+                ip,
+                port,
+                name,
+                uuid,
+                uname,
+            },
+            Self::Offline {
+                ip,
+                port,
+                name,
+                uuid,
+                uname,
+                ..
+            } => Server::Offline {
+                offline_reason,
+                ip,
+                port,
+                name,
+                uuid,
+                uname,
+            },
+        }
+    }
+
+    pub fn is_online(&self) -> bool {
+        match self {
+            Self::Online { .. } => true,
+            Self::Offline { .. } => false,
+        }
+    }
+
     // pub fn add_message(&mut self, content: FmtString, author: u64) {
     //     //todo compile regex once and use it mulyiple times, this is slow as fuck
     //     //let url_regex = r#"^https?://(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)$"#;
@@ -226,6 +306,8 @@ impl Server {
                     uuid: Some(uuid),
                 })
                 .await?;
+                self.set_uuid(uuid);
+                self.write(GetUserRequest { uuid }).await?; // just make certain we get our own name
             }
             Identification::Username(username) => {
                 self.write(LoginRequest {
@@ -234,6 +316,7 @@ impl Server {
                     uuid: None,
                 })
                 .await?;
+                self.set_uname(username.into());
             }
         }
         self.write(GetIconRequest).await?;
@@ -276,7 +359,10 @@ impl Server {
     fn format_message(msg: &api::Message, peers: &HashMap<i64, Peer>) -> FmtString {
         let formatted = FmtString::from_str(&format!(
             " {}: {}",
-            peers.get(&msg.author_uuid).unwrap().name,
+            peers
+                .get(&msg.author_uuid)
+                .map(|x| x.name.as_str())
+                .unwrap_or("Unknown User"),
             msg.content
         ));
         // let mut ks: Vec<&i64> = peers.keys().collect();
@@ -285,7 +371,10 @@ impl Server {
         // ks.shuffle(&mut rng);
 
         // let pfp = peers.get(ks[0]).unwrap().pfp.clone();
-        let pfp = peers.get(&msg.author_uuid).unwrap().pfp.clone();
+        let pfp = peers
+            .get(&msg.author_uuid)
+            .map(|x| x.pfp.clone())
+            .unwrap_or(FmtString::from_str("  "));
         FmtString::concat(pfp, formatted)
     }
 
@@ -296,6 +385,7 @@ impl Server {
             name,
             loaded_messages,
             channels,
+            uname,
             ..
         } = self
         {
@@ -303,12 +393,19 @@ impl Server {
             match response {
                 GetMetadataResponse { data } => {
                     for elem in data {
-                        let uuid = elem.uuid;
+                        let peer_uuid = elem.uuid;
                         let peer = Peer::from_user(elem);
-                        peers.insert(uuid, peer);
+                        if uuid.is_some_and(|uuid| uuid == peer_uuid) {
+                            // info about ourselves that we may not know yet!
+                            if uname.is_none() {
+                                *uname = Some(peer.name.clone());
+                            }
+                        }
+                        peers.insert(peer_uuid, peer);
                     }
                 }
                 RegisterResponse { uuid: new_uuid } => *uuid = Some(new_uuid),
+                LoginResponse { uuid: new_uuid } => *uuid = Some(new_uuid),
                 GetNameResponse { data } => *name = Some(data),
                 ListChannelsResponse { data } => *channels = data,
                 HistoryResponse { data } => loaded_messages.extend(

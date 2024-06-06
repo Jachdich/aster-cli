@@ -303,6 +303,7 @@ dependencies = [
 name = "fmtstring"
 version = "0.1.0"
 dependencies = [
+ "oklab",
  "termion 1.5.6",
 ]
 

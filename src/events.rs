@@ -19,6 +19,7 @@ impl GUI {
                         self.send_system(e.0.as_str());
                     }
                     self.buffer = "".to_string();
+                    self.draw_input_buffer();
                 } else if let Some(curr_server) = self.curr_server {
                     let curr_channel_uuid = if let Server::Online {
                         channels,
@@ -42,6 +43,7 @@ impl GUI {
                     match res {
                         Ok(_) => {
                             self.buffer = "".to_string();
+                            self.draw_input_buffer();
                         }
                         Err(error) => {
                             self.send_system(error.to_string().as_str());
@@ -54,18 +56,22 @@ impl GUI {
 
             Event::Key(Key::Char(ch)) => {
                 self.buffer.push(ch);
+                self.draw_input_buffer();
             }
 
             Event::Key(Key::Backspace) => {
                 self.buffer.pop();
+                self.draw_input_buffer();
             }
 
             Event::Mouse(MouseEvent::Press(MouseButton::WheelUp, _, _)) => {
                 self.scroll -= 1;
+                self.draw_messages();
             }
 
             Event::Mouse(MouseEvent::Press(MouseButton::WheelDown, _, _)) => {
                 self.scroll += 1;
+                self.draw_messages();
             }
 
             _ => (),
@@ -91,6 +97,7 @@ impl GUI {
         } else if self.servers.len() > 0 {
             self.curr_server = Some(0);
         }
+        self.draw_servers(); //TODO could be more efficient
     }
 
     async fn focus_channels_event(&mut self, event: Event) {
@@ -132,12 +139,18 @@ impl GUI {
             if reload {
                 loaded_messages.clear();
                 let channel = channels[curr_channel.unwrap()].uuid;
-                s.write(api::Request::HistoryRequest {
-                    num: 1000,
-                    channel,
-                    before_message: None,
-                })
-                .await;
+                if let Err(e) = s
+                    .write(api::Request::HistoryRequest {
+                        num: 100,
+                        channel,
+                        before_message: None,
+                    })
+                    .await
+                {
+                    self.send_system(&format!("Unable to get history: {}", e));
+                }
+                self.draw_messages();
+                self.draw_servers();
             }
         } else {
             panic!("Offline server somehow changed their chanel")
@@ -167,12 +180,15 @@ impl GUI {
                     ],
                     vec!["Connect", "Cancel"],
                 ));
+                self.draw_prompt();
             }
             Event::Key(Key::Alt('c')) => {
                 self.focus = Focus::ChannelList;
+                // self.draw_servers();
             }
             Event::Key(Key::Alt('s')) => {
                 self.focus = Focus::ServerList;
+                // self.draw_servers();
             }
             Event::Key(Key::Alt('e')) => {
                 self.focus = Focus::Edit;
@@ -204,17 +220,16 @@ impl GUI {
                         )
                         .await,
                     );
-                    self.servers
-                        .last_mut()
-                        .unwrap()
-                        .initialise(id)
-                        .await
-                        .unwrap();
+                    let conn = self.servers.last_mut().unwrap();
+                    if conn.is_online() {
+                        conn.initialise(id).await.unwrap();
+                    }
                     self.mode = Mode::Messages;
                 }
                 Some(PromptEvent::ButtonPressed("Cancel")) => {
                     self.mode = Mode::Messages;
                     self.prompt = None;
+                    self.draw_messages();
                 }
                 Some(PromptEvent::ButtonPressed(_)) => unreachable!(), // no idea
                 None => (),

@@ -26,3 +26,8 @@ dct-tiv = { path = "../../dct-tiv" }
 fmtstring = { path = "../../fmtstring" }
 # TEMP
 rand = "*"
+
+
+[profile.release]
+debug = true
+

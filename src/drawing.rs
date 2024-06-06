@@ -1,7 +1,6 @@
 extern crate termion;
 use std::io::Write;
 use std::fmt;
-use crate::DisplayMessage;
 use crate::server::Server;
 use crate::gui::GUI;
 use super::Mode;
@@ -44,25 +43,6 @@ fn parse_colour(inp: &str) -> Colour {
         _ => todo!(),
     }
 }
-
-// #[derive(Clone, Debug)]
-// pub struct Colour {
-//     pub fg: String,
-//     pub bg: String,
-// }
-
-// impl Colour {
-//     pub fn new() -> Self {
-//         Colour {
-//             fg: "".to_string(),
-//             bg: "".to_string(),
-//         }
-//     }
-
-//     pub fn from_strs(fg: &str, bg: &str) -> Colour {
-//         Colour { fg: fg.to_string(), bg: bg.to_string() }
-//     }
-// }
 
 #[derive(Clone, Debug)]
 pub struct OptionalFmtChar(Option<FmtChar>);
@@ -227,7 +207,7 @@ fn border_rep(c: &OptionalFmtChar, n: usize) -> String {
 }
 
 impl GUI {
-    fn draw_servers(&mut self) {
+    pub fn draw_servers(&mut self) {
         let (_width, height) = termion::terminal_size().unwrap();
         let height = height - 1;
         let list_height: u16 = self.theme.get_list_height(height) as u16;
@@ -280,7 +260,7 @@ impl GUI {
         }
     }
     
-    fn draw_messages(&mut self) {
+    pub fn draw_messages(&mut self) {
         // TODO: Possibly more efficient way of doing this without copying?
         let nothing = Vec::new();
         let messages = if let Some(curr_server) = self.curr_server {
@@ -344,9 +324,7 @@ impl GUI {
     }
     
     
-    fn draw_border(&mut self) {
-        if self.draw_border {
-            self.draw_border = false;
+    pub fn draw_border(&mut self) {
             let (width, height) = termion::terminal_size().unwrap();
             let height = height - 1;
             let channels_height = self.theme.get_channels_height(height);
@@ -492,12 +470,11 @@ impl GUI {
                 //mtr = self.theme.messages.border.tr,
 
             );
-        }
         write!(self.screen, "{}", self.border_buffer).unwrap();
     
     }
 
-    pub fn draw_screen(&mut self)  {
+    pub fn common_update(&mut self) {
         let (width, height) = termion::terminal_size().unwrap();
     
         if width < 32 || height < 8 {
@@ -505,39 +482,25 @@ impl GUI {
             return;
         }
 
-        if self.last_w != width || self.last_h != height { 
-            self.redraw = true;
-        }
-
-        if self.redraw {
+        if self.width != width || self.height != height {
             self.draw_border();
-            self.redraw = true;
         }
 
-        write!(self.screen, "{}{}{}", termion::cursor::Goto(1, height), termion::clear::CurrentLine, self.system_message.to_optimised_string()).unwrap();
-    
-        match self.mode {
-            Mode::Messages => {
-                if self.servers.len() > 0 {
-                    self.draw_messages();
-                    self.draw_servers();
-                }
-                write!(self.screen, "{}{}", termion::cursor::Goto(self.theme.left_margin as u16 + self.theme.servers.border.left.width() + self.theme.servers.border.right.width() + 2, height - 2), self.buffer).unwrap();
-            }
-            Mode::NewServer => {
-                if self.servers.len() > 0 {
-                    self.draw_servers();
-                }
-                let (_width, height) = termion::terminal_size().unwrap();
-                let y = height - self.prompt.as_ref().unwrap().height() - 1;
-                self.prompt.as_ref().unwrap().draw(&mut self.screen, self.theme.left_margin as u16 + 4, y, &self.theme);
-            }
-            Mode::Settings => {
-                
-            }
-        }
-        self.last_w = width;
-        self.last_h = height;
+        self.width = width;
+        self.height = height;
+    }
+
+    pub fn draw_status_line(&mut self) {
+        write!(self.screen, "{}{}{}", termion::cursor::Goto(1, self.height), termion::clear::CurrentLine, self.system_message.to_optimised_string()).unwrap();
+    }
+
+    pub fn draw_input_buffer(&mut self) {
+        write!(self.screen, "{}{}", termion::cursor::Goto(self.theme.left_margin as u16 + self.theme.servers.border.left.width() + self.theme.servers.border.right.width() + 2, self.height - 2), self.buffer).unwrap();
+    }
+
+    pub fn draw_prompt(&mut self) {
+        let y = self.height - self.prompt.as_ref().unwrap().height() - 1;
+        self.prompt.as_ref().unwrap().draw(&mut self.screen, self.theme.left_margin as u16 + 4, y, &self.theme);
     }
 }
 
