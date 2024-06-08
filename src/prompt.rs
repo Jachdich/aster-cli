@@ -6,38 +6,50 @@ enum Selection {
     Button(usize),
 }
 
-struct EditBuffer {
-    data: String,
-    edit_position: usize,
+pub struct EditBuffer {
+    pub data: String,
+    pub edit_position: usize,
 }
 
 impl EditBuffer {
-    fn new(default: String) -> Self {
+    pub fn new(default: String) -> Self {
         Self {
             edit_position: default.len(),
             data: default,
         }
     }
-    fn push(&mut self, c: char) {
-        let mut new_data = self.data.chars().collect::<Vec<char>>();
-        new_data.insert(self.edit_position, c);
-        self.data = new_data.iter().collect();
+    pub fn push(&mut self, c: char) {
+        let i = if self.edit_position == 0 {
+            0
+        } else {
+            self.data
+                .char_indices()
+                .nth(self.edit_position - 1)
+                .unwrap()
+                .0
+                + 1 // edit position should always be in range...
+        };
+        self.data.insert(i, c);
         self.edit_position += 1;
     }
-    fn pop(&mut self) {
+    pub fn pop(&mut self) {
         if self.edit_position > 0 {
-            let mut new_data = self.data.chars().collect::<Vec<char>>();
-            new_data.remove(self.edit_position - 1);
-            self.data = new_data.iter().collect();
+            let (i, _) = self
+                .data
+                .char_indices()
+                .nth(self.edit_position - 1)
+                .unwrap(); // edit position should always be in range...
+            self.data.remove(i);
             self.edit_position -= 1;
         }
     }
-    fn left(&mut self) {
+    pub fn left(&mut self) {
         if self.edit_position > 0 {
             self.edit_position -= 1;
         }
     }
-    fn right(&mut self) {
+
+    pub fn right(&mut self) {
         if self.edit_position < self.data.len() {
             self.edit_position += 1;
         }
@@ -249,55 +261,6 @@ impl Prompt {
             }
         )
         .unwrap();
-
-        // write!(
-        //     screen,
-        //     "{}{}ip   : {}{}{}{}{}port : {}{}{}{}{}uuid : {}{}{}{}{}[connect]{}{} {}[cancel]{}{}{}",
-        //     if self.sel_idx == 0 {
-        //         self.theme.servers.selected_text.clone()
-        //     } else {
-        //         Colour::new()
-        //     },
-        //     termion::cursor::Goto(self.theme.left_margin as u16 + 4, height - 4),
-        //     termion::color::Fg(termion::color::Reset),
-        //     termion::color::Bg(termion::color::Reset),
-        //     self.ip_buffer,
-        //     if self.sel_idx == 1 {
-        //         self.theme.servers.selected_text.clone()
-        //     } else {
-        //         Colour::new()
-        //     },
-        //     termion::cursor::Goto(self.theme.left_margin as u16 + 4, height - 3),
-        //     termion::color::Fg(termion::color::Reset),
-        //     termion::color::Bg(termion::color::Reset),
-        //     self.port_buffer,
-        //     if self.sel_idx == 2 {
-        //         self.theme.servers.selected_text.clone()
-        //     } else {
-        //         Colour::new()
-        //     },
-        //     termion::cursor::Goto(self.theme.left_margin as u16 + 4, height - 2),
-        //     termion::color::Fg(termion::color::Reset),
-        //     termion::color::Bg(termion::color::Reset),
-        //     self.uuid_buffer,
-        //     termion::cursor::Goto(self.theme.left_margin as u16 + 4, height - 1),
-        //     if self.sel_idx == 3 {
-        //         self.theme.servers.selected_text.clone()
-        //     } else {
-        //         Colour::new()
-        //     },
-        //     termion::color::Bg(termion::color::Reset),
-        //     termion::color::Fg(termion::color::Reset),
-        //     if self.sel_idx == 4 {
-        //         self.theme.servers.selected_text.clone()
-        //     } else {
-        //         Colour::new()
-        //     },
-        //     termion::color::Bg(termion::color::Reset),
-        //     termion::color::Fg(termion::color::Reset),
-        //     termion::cursor::Goto(cur_x, cur_y),
-        // )
-        // .unwrap();
     }
 
     fn index_from_str(&self, val: &str) -> Option<usize> {

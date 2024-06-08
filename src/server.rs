@@ -95,61 +95,22 @@ impl Serialize for Server {
     }
 }
 
+#[rustfmt::skip]
 impl Server {
-    pub fn ip(&self) -> &str {
-        match self {
-            Self::Online { ip, .. } | Self::Offline { ip, .. } => &ip,
-        }
-    }
-    pub fn port(&self) -> u16 {
-        match self {
-            Self::Online { port, .. } | Self::Offline { port, .. } => *port,
-        }
-    }
-    pub fn uuid(&self) -> Option<i64> {
-        match self {
-            Self::Online { uuid, .. } | Self::Offline { uuid, .. } => *uuid,
-        }
-    }
     pub fn name(&self) -> Option<&str> {
-        match self {
-            Self::Online { name, .. } | Self::Offline { name, .. } => {
-                name.as_ref().map(|x| x.as_str())
-            }
-        }
+        match self { Self::Online { name, .. } | Self::Offline { name, .. } => name.as_ref().map(|x| x.as_str()) }
     }
     pub fn uname(&self) -> Option<&str> {
-        match self {
-            Self::Online { uname, .. } | Self::Offline { uname, .. } => {
-                uname.as_ref().map(|x| x.as_str())
-            }
-        }
+        match self { Self::Online { uname, .. } | Self::Offline { uname, .. } => uname.as_ref().map(|x| x.as_str()) }
     }
-    pub fn set_ip(&mut self, v: String) {
-        match self {
-            Self::Online { ip, .. } | Self::Offline { ip, .. } => *ip = v,
-        }
-    }
-    pub fn set_port(&mut self, v: u16) {
-        match self {
-            Self::Online { port, .. } | Self::Offline { port, .. } => *port = v,
-        }
-    }
-    pub fn set_uuid(&mut self, v: i64) {
-        match self {
-            Self::Online { uuid, .. } | Self::Offline { uuid, .. } => *uuid = Some(v),
-        }
-    }
-    pub fn set_name(&mut self, v: String) {
-        match self {
-            Self::Online { name, .. } | Self::Offline { name, .. } => *name = Some(v),
-        }
-    }
-    pub fn set_uname(&mut self, v: String) {
-        match self {
-            Self::Online { uname, .. } | Self::Offline { uname, .. } => *uname = Some(v),
-        }
-    }
+    pub fn ip(&self) -> &str { match self { Self::Online { ip, .. } | Self::Offline { ip, .. } => &ip }}
+    pub fn port(&self) -> u16 { match self { Self::Online { port, .. } | Self::Offline { port, .. } => *port }}
+    pub fn uuid(&self) -> Option<i64> { match self { Self::Online { uuid, .. } | Self::Offline { uuid, .. } => *uuid }}
+    pub fn set_ip(&mut self, v: String)    { match self { Self::Online { ip, .. }    | Self::Offline { ip, .. }    => *ip = v }}
+    pub fn set_port(&mut self, v: u16)     { match self { Self::Online { port, .. }  | Self::Offline { port, .. }  => *port = v }}
+    pub fn set_uuid(&mut self, v: i64)     { match self { Self::Online { uuid, .. }  | Self::Offline { uuid, .. }  => *uuid = Some(v) }}
+    pub fn set_name(&mut self, v: String)  { match self { Self::Online { name, .. }  | Self::Offline { name, .. }  => *name = Some(v) }}
+    pub fn set_uname(&mut self, v: String) { match self { Self::Online { uname, .. } | Self::Offline { uname, .. } => *uname = Some(v) }}
 }
 
 pub enum Identification<'a> {

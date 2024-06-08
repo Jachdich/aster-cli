@@ -2,9 +2,8 @@ extern crate termion;
 
 use crate::api::{Message, Request, Response, Status, User};
 use crate::drawing::Theme;
-use crate::prompt::{Prompt, PromptField};
+use crate::prompt::{EditBuffer, Prompt, PromptField};
 use crate::server::Server;
-use crate::DisplayMessage;
 use crate::Focus;
 use crate::LocalMessage;
 use crate::Mode;
@@ -17,7 +16,7 @@ use tokio::sync::broadcast;
 
 pub struct GUI {
     pub scroll: isize,
-    pub buffer: String,
+    pub buffer: EditBuffer,
     pub tx: Sender<LocalMessage>,
     pub rx: Receiver<LocalMessage>,
     pub servers: Vec<Server>, // FEAT server folders
@@ -26,13 +25,15 @@ pub struct GUI {
     pub focus: Focus,
     pub screen: termion::raw::RawTerminal<termion::input::MouseTerminal<std::io::Stdout>>,
     pub theme: Theme,
-    pub border_buffer: String,
     pub system_message: FmtString,
     pub prompt: Option<Prompt>,
     pub redraw: bool,
     pub width: u16,
     pub height: u16,
     pub cancel: broadcast::Sender<()>,
+
+    pub draw_border: bool,
+    pub border_buffer: String,
 }
 
 #[derive(Debug)]
@@ -108,14 +109,13 @@ impl GUI {
         }
 
         let stdout = stdout();
-        //let mut screen = stdout();
         let screen = termion::input::MouseTerminal::from(stdout)
             .into_raw_mode()
             .unwrap();
 
         GUI {
             scroll: 0,
-            buffer: "".to_string(),
+            buffer: EditBuffer::new("".into()),
             tx,
             rx,
             servers,
@@ -124,9 +124,6 @@ impl GUI {
             focus: Focus::Edit,
             screen,
             theme: Theme::new("themes/default.json").unwrap(),
-            border_buffer: String::new(),
-            draw_border: true,
-
             system_message: FmtString::from_str(""),
 
             prompt: None,
@@ -135,6 +132,9 @@ impl GUI {
             height: 0,
 
             cancel,
+
+            draw_border: true,
+            border_buffer: String::new(),
         }
     }
 
@@ -177,7 +177,7 @@ impl GUI {
                             "This server is offline, cannot join any channels!".into(),
                         ));
                     };
-                    self.draw_messages();
+                    // self.draw_messages();
 
                     //It is possible that this unwrap fails due to the time interval since it was last checked. fuck it I cba
                     self.servers[curr_server]
@@ -205,16 +205,15 @@ impl GUI {
                     Ok(theme) => {
                         self.theme = theme;
                         // self.send_system(&format!("Changed theme to {}", argv[1]));
+                        // all of these potentially need drawing
+                        // self.draw_border();
+                        // self.draw_messages();
+                        // self.draw_servers();
+                        // self.draw_status_line();
+                        // self.draw_input_buffer();
                     }
                     Err(_e) => self.send_system("Nonexistant or invalid theme provided"),
                 }
-
-                // all of these potentially need drawing
-                self.draw_border();
-                self.draw_messages();
-                self.draw_servers();
-                self.draw_status_line();
-                self.draw_input_buffer();
 
                 Ok(())
             }
@@ -240,11 +239,10 @@ impl GUI {
     }
 
     pub async fn run_gui(&mut self) {
-        self.common_update();
+        self.update_term_size();
         self.screen.flush().unwrap();
 
         loop {
-            self.common_update();
             match self.rx.recv().unwrap() {
                 LocalMessage::Keyboard(key) => {
                     if !self.handle_keyboard(key).await {
@@ -275,6 +273,7 @@ impl GUI {
                     }
                 }
             }
+            self.draw_all();
             self.screen.flush().unwrap();
         }
     }

@@ -2,6 +2,7 @@ use super::Focus;
 use super::Mode;
 use crate::api;
 use crate::gui::GUI;
+use crate::prompt::EditBuffer;
 use crate::prompt::{Prompt, PromptEvent, PromptField};
 use crate::server::Server;
 use termion::event::{Event, Key, MouseButton, MouseEvent};
@@ -10,16 +11,15 @@ impl GUI {
     async fn focus_edit_event(&mut self, event: Event) {
         match event {
             Event::Key(Key::Char('\n')) => {
-                if self.buffer.len() == 0 {
+                if self.buffer.data.len() == 0 {
                     return;
                 }
 
-                if self.buffer.chars().nth(0).unwrap() == '/' {
-                    if let Err(e) = self.handle_send_command(self.buffer.clone()).await {
+                if self.buffer.data.chars().nth(0).unwrap() == '/' {
+                    if let Err(e) = self.handle_send_command(self.buffer.data.clone()).await {
                         self.send_system(e.0.as_str());
                     }
-                    self.buffer = "".to_string();
-                    self.draw_input_buffer();
+                    self.buffer = EditBuffer::new("".to_string());
                 } else if let Some(curr_server) = self.curr_server {
                     let curr_channel_uuid = if let Server::Online {
                         channels,
@@ -36,14 +36,13 @@ impl GUI {
 
                     let res = self.servers[curr_server]
                         .write(crate::api::Request::SendRequest {
-                            content: self.buffer.clone(),
+                            content: self.buffer.data.clone(),
                             channel: curr_channel_uuid,
                         })
                         .await;
                     match res {
                         Ok(_) => {
-                            self.buffer = "".to_string();
-                            self.draw_input_buffer();
+                            self.buffer = EditBuffer::new("".to_string());
                         }
                         Err(error) => {
                             self.send_system(error.to_string().as_str());
@@ -54,24 +53,17 @@ impl GUI {
                 }
             }
 
-            Event::Key(Key::Char(ch)) => {
-                self.buffer.push(ch);
-                self.draw_input_buffer();
-            }
-
-            Event::Key(Key::Backspace) => {
-                self.buffer.pop();
-                self.draw_input_buffer();
-            }
+            Event::Key(Key::Char(ch)) => self.buffer.push(ch),
+            Event::Key(Key::Backspace) => self.buffer.pop(),
+            Event::Key(Key::Left) => self.buffer.left(),
+            Event::Key(Key::Right) => self.buffer.right(),
 
             Event::Mouse(MouseEvent::Press(MouseButton::WheelUp, _, _)) => {
                 self.scroll -= 1;
-                self.draw_messages();
             }
 
             Event::Mouse(MouseEvent::Press(MouseButton::WheelDown, _, _)) => {
                 self.scroll += 1;
-                self.draw_messages();
             }
 
             _ => (),
@@ -97,7 +89,6 @@ impl GUI {
         } else if self.servers.len() > 0 {
             self.curr_server = Some(0);
         }
-        self.draw_servers(); //TODO could be more efficient
     }
 
     async fn focus_channels_event(&mut self, event: Event) {
@@ -139,18 +130,12 @@ impl GUI {
             if reload {
                 loaded_messages.clear();
                 let channel = channels[curr_channel.unwrap()].uuid;
-                if let Err(e) = s
-                    .write(api::Request::HistoryRequest {
-                        num: 100,
-                        channel,
-                        before_message: None,
-                    })
-                    .await
-                {
-                    self.send_system(&format!("Unable to get history: {}", e));
-                }
-                self.draw_messages();
-                self.draw_servers();
+                s.write(api::Request::HistoryRequest {
+                    num: 1000,
+                    channel,
+                    before_message: None,
+                })
+                .await;
             }
         } else {
             panic!("Offline server somehow changed their chanel")
@@ -180,15 +165,12 @@ impl GUI {
                     ],
                     vec!["Connect", "Cancel"],
                 ));
-                self.draw_prompt();
             }
             Event::Key(Key::Alt('c')) => {
                 self.focus = Focus::ChannelList;
-                // self.draw_servers();
             }
             Event::Key(Key::Alt('s')) => {
                 self.focus = Focus::ServerList;
-                // self.draw_servers();
             }
             Event::Key(Key::Alt('e')) => {
                 self.focus = Focus::Edit;
@@ -229,7 +211,6 @@ impl GUI {
                 Some(PromptEvent::ButtonPressed("Cancel")) => {
                     self.mode = Mode::Messages;
                     self.prompt = None;
-                    self.draw_messages();
                 }
                 Some(PromptEvent::ButtonPressed(_)) => unreachable!(), // no idea
                 None => (),
