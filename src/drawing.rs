@@ -458,7 +458,6 @@ impl GUI {
                 + (&termion::color::Bg(termion::color::Reset).to_string());
 
             self.border_buffer = format!("{0}{1}{sttl}{2}{3}\r\n{stleft}{4}{stright}{mleft}{space_padding}{mright}\r\n{stleft}{5}{stright}{mleft}{space_padding}{mright}\r\n{6}{7}{8}{9}{sbl}{10}{11}",
-            
     /*0*/       termion::cursor::Goto(1, 1),
     /*1*/       "",
     /*2*/       border_rep(&self.theme.status.border.top, left_margin),
@@ -479,7 +478,7 @@ impl GUI {
                         sttr = self.theme.status.border.tr,
                     )
                 },
-                
+
     /*4*/       centred("Connected to", left_margin),
 
     /*5*/       centred("cospox.com", self.theme.left_margin),
@@ -501,17 +500,17 @@ impl GUI {
                     " ".repeat(left_margin),
                     space_padding,
                     rs = rs,
-                    cleft = self.theme.channels.border.left, 
-                    cright = self.theme.channels.border.right, 
+                    cleft = self.theme.channels.border.left,
+                    cright = self.theme.channels.border.right,
                     mright = self.theme.messages.border.right,
                     mleft = self.theme.messages.border.left,
                 ).repeat(channels_height),
 
     /*8*/       if self.theme.channels.border.bottom.width() > 0 && self.theme.servers.border.top.width() > 0 {
-                    format!("{cbl}{}{cbr}{mleft}{}{mright}\r\n{stl}{}{str}{mleft}{}{mright}\r\n", 
-                        border_rep(&self.theme.channels.border.bottom, left_margin), 
+                    format!("{cbl}{}{cbr}{mleft}{}{mright}\r\n{stl}{}{str}{mleft}{}{mright}\r\n",
+                        border_rep(&self.theme.channels.border.bottom, left_margin),
                         space_padding,
-                        border_rep(&self.theme.servers.border.top, left_margin), 
+                        border_rep(&self.theme.servers.border.top, left_margin),
                         space_padding,
                         cbl = self.theme.channels.border.bl,
                         cbr = self.theme.channels.border.br,
@@ -529,7 +528,7 @@ impl GUI {
                         mright = self.theme.messages.border.right,
                         mleft = self.theme.messages.border.left,
                     )
-                } else if self.theme.servers.border.top.width() > 0 { 
+                } else if self.theme.servers.border.top.width() > 0 {
                     format!("{sleft_split}{}{sright_split}{mleft}{}{mright}\r\n", 
                         border_rep(&self.theme.servers.border.top, left_margin),
                         space_padding,
@@ -541,7 +540,7 @@ impl GUI {
                 } else {
                     "".to_string()
                 },
-                
+
     /*9*/       format!("{sleft}{rs}{}{sright}{rs}{mleft}{}{mright}\r\n", 
                     " ".repeat(self.theme.left_margin), 
                     space_padding,
@@ -623,20 +622,22 @@ impl GUI {
     }
 
     pub fn draw_input_buffer(&mut self) -> (u16, u16) {
+        let begin_x = self.theme.left_margin as u16
+            + self.theme.servers.border.left.width()
+            + self.theme.servers.border.right.width()
+            + 2; // ?
         let max_drawing_width = self.width
-            - (self.theme.left_margin as u16
-                + self.theme.servers.border.left.width()
-                + self.theme.servers.border.right.width()
+            - (begin_x
                 + self.theme.messages.border.right.width()
-                + self.theme.messages.border.left.width()
-                + 2);
-        let num_lines =
-            (self.buffer.data.chars().count() as f64 / max_drawing_width as f64).ceil() as u16; // TODO kinda inefficient if you think about it
+                + self.theme.messages.border.left.width());
+
+        // + 1 so that it adds a new line for the cursor to go on (as if the cursor is 1 extra char)
+        let num_lines = ((self.buffer.data.chars().count() + 1) as f64 / max_drawing_width as f64)
+            .ceil() as u16; // TODO kinda inefficient if you think about it
 
         let mut iter = self.buffer.data.chars();
         let mut pos = 0;
         let mut curr_line = 0;
-        let mut curr_line_len = 0;
 
         while pos < self.buffer.data.len() {
             let mut len = 0;
@@ -647,17 +648,13 @@ impl GUI {
             write!(
                 self.screen,
                 "{}{}",
-                termion::cursor::Goto(
-                    self.theme.left_margin as u16
-                        + self.theme.servers.border.left.width()
-                        + self.theme.servers.border.right.width()
-                        + 2,
-                    self.height - 1 - num_lines + curr_line
-                ),
+                termion::cursor::Goto(begin_x, self.height - 1 - num_lines + curr_line),
                 line
             )
             .unwrap();
-            curr_line_len = line.len();
+
+            // fill the rest of the line with spaces if it doesn't fill the whole line, to make sure nothing is left behind
+            let curr_line_len = line.len();
             if curr_line_len < max_drawing_width as usize {
                 write!(
                     self.screen,
@@ -671,8 +668,19 @@ impl GUI {
             curr_line += 1;
         }
 
-        // write!(self.screen, "{}{}", termion::cursor::Goto(self.theme.left_margin as u16 + self.theme.servers.border.left.width() + self.theme.servers.border.right.width() + 2, self.height - 2), self.buffer).unwrap();
-        (num_lines, curr_line_len as u16)
+        // special case: if we just started a new line & it has nothing on it,
+        // clear the line, because there isn't any bit of the line to trigger the
+        // previous line clearing thingie
+        if curr_line < num_lines {
+            write!(
+                self.screen,
+                "{}{}",
+                termion::cursor::Goto(begin_x, self.height - 2),
+                " ".repeat(max_drawing_width as usize)
+            )
+            .unwrap();
+        }
+        (num_lines, max_drawing_width)
     }
 
     pub fn draw_prompt(&mut self) {
@@ -698,19 +706,15 @@ impl GUI {
 
         match self.mode {
             Mode::Messages => {
-                let (num_input_lines, cursor_x_pos) = self.draw_input_buffer();
+                let (num_input_lines, max_drawing_width) = self.draw_input_buffer();
                 if self.servers.len() > 0 {
                     self.draw_messages(num_input_lines);
                     self.draw_servers();
                 }
-                let max_drawing_width = self.width
-                    - (self.theme.left_margin as u16
-                        + self.theme.servers.border.left.width()
-                        + self.theme.servers.border.right.width()
-                        + self.theme.messages.border.right.width()
-                        + self.theme.messages.border.left.width()
-                        + 2);
-                let num_lines = write!(
+                let cursor_x_pos = self.buffer.edit_position % max_drawing_width as usize;
+                let cursor_y_pos = self.buffer.edit_position / max_drawing_width as usize;
+
+                write!(
                     self.screen,
                     "{}",
                     termion::cursor::Goto(
@@ -718,8 +722,8 @@ impl GUI {
                             + self.theme.servers.border.left.width()
                             + self.theme.servers.border.right.width()
                             + 2
-                            + cursor_x_pos,
-                        self.height - 2
+                            + cursor_x_pos as u16,
+                        self.height - 1 - num_input_lines.max(1) + cursor_y_pos as u16
                     )
                 )
                 .unwrap();
