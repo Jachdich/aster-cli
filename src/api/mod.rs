@@ -25,6 +25,13 @@ pub struct SyncServer {
 }
 
 #[derive(Deserialize)]
+pub struct SyncData {
+    pub user_uuid: i64,
+    pub uname: String,
+    pub pfp: String,
+}
+
+#[derive(Deserialize)]
 pub struct User {
     pub uuid: i64,
     pub name: String,
@@ -84,20 +91,20 @@ pub enum Request {
 #[serde(tag = "command")]
 #[rustfmt::skip]
 pub enum Response {  
-    #[serde(rename = "register")]         RegisterResponse       { uuid: i64 },
-    #[serde(rename = "login")]            LoginResponse          { uuid: i64 },
-    #[serde(rename = "get_metadata")]     GetMetadataResponse    { data: Vec<User> },
-    #[serde(rename = "sync_get_servers")] SyncGetServersResponse { servers: Vec<SyncServer> },
-    #[serde(rename = "online")]           OnlineResponse         { data: Vec<i64> },
-    #[serde(rename = "history")]          HistoryResponse        { data: Vec<Message> },
-    #[serde(rename = "get_user")]         GetUserResponse        { data: User },
-    #[serde(rename = "get_icon")]         GetIconResponse        { data: String },
-    #[serde(rename = "get_name")]         GetNameResponse        { data: String },
-    #[serde(rename = "list_channels")]    ListChannelsResponse   { data: Vec<Channel> },
-    #[serde(rename = "get_emoji")]        GetEmojiResponse       { data: Emoji },
-    #[serde(rename = "list_emoji")]       ListEmojiResponse      { data: Vec<(String, i64)> },
-    #[serde(rename = "sync_get")]         SyncGetResponse        { user_uuid: i64, uname: String, pfp: String },
-    #[serde(rename = "content")]          ContentResponse(Message), // TODO does this (de)serialise correctly?
-    #[serde(rename = "API_version")]      APIVersion { version: [u8; 3] },
-    #[serde(rename = "send")] SendResponse,
+    #[serde(rename = "register")]         RegisterResponse       { status: Status, uuid: Option<i64> },
+    #[serde(rename = "login")]            LoginResponse          { status: Status, uuid: Option<i64> },
+    #[serde(rename = "get_metadata")]     GetMetadataResponse    { status: Status, data: Option<Vec<User>> },
+    #[serde(rename = "sync_get_servers")] SyncGetServersResponse { status: Status, servers: Option<Vec<SyncServer>> },
+    #[serde(rename = "online")]           OnlineResponse         { status: Status, data: Option<Vec<i64>> },
+    #[serde(rename = "history")]          HistoryResponse        { status: Status, data: Option<Vec<Message>> },
+    #[serde(rename = "get_user")]         GetUserResponse        { status: Status, data: Option<User> },
+    #[serde(rename = "get_icon")]         GetIconResponse        { status: Status, data: Option<String> },
+    #[serde(rename = "get_name")]         GetNameResponse        { status: Status, data: Option<String> },
+    #[serde(rename = "list_channels")]    ListChannelsResponse   { status: Status, data: Option<Vec<Channel>> },
+    #[serde(rename = "get_emoji")]        GetEmojiResponse       { status: Status, data: Option<Emoji> },
+    #[serde(rename = "list_emoji")]       ListEmojiResponse      { status: Status, data: Option<Vec<(String, i64)>> },
+    #[serde(rename = "sync_get")]         SyncGetResponse        { status: Status, #[serde(flatten)] data: Option<SyncData> },
+    #[serde(rename = "content")]          ContentResponse        { status: Status, #[serde(flatten)] message: Message },
+    #[serde(rename = "API_version")]      APIVersion             { status: Status, version: [u8; 3] },
+    #[serde(rename = "send")]             SendResponse           { status: Status },
 }

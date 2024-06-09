@@ -218,7 +218,30 @@ impl GUI {
                 Ok(())
             }
 
-            "/new" => Ok(()),
+            "/new" => {
+                if argv.len() == 2 {}
+                self.mode = Mode::NewServer;
+                self.prompt = Some(Prompt::new(
+                    "Add a server",
+                    vec![
+                        PromptField::String {
+                            name: "IP",
+                            default: None,
+                        },
+                        PromptField::U16 {
+                            name: "Port",
+                            default: Some(2345),
+                        },
+                        PromptField::String {
+                            name: "Username",
+                            default: None,
+                        },
+                    ],
+                    vec!["Connect", "Cancel"],
+                ));
+
+                Ok(())
+            }
             _ => Err(CommandError(format!("Unknown command '{}'", argv[0]))),
         }
     }
@@ -259,13 +282,13 @@ impl GUI {
                         Ok(obj) => {
                             let status: Status =
                                 serde_json::from_value(obj["status"].clone()).unwrap();
-                            if status != Status::Ok {
-                                panic!("We likely did something wrong, non-ok status: {:?}", obj)
-                            }
+                            // if status != Status::Ok {
+                            //     panic!("We likely did something wrong, non-ok status: {:?}", obj)
+                            // }
                             let response: Response = serde_json::from_value(obj).unwrap();
                             self.get_server_by_addr(addr)
                                 .expect("Network packet recv'd for offline server")
-                                .handle_network_packet(response);
+                                .handle_network_packet(response, status);
                         }
                         Err(_) => {
                             //ignore for now

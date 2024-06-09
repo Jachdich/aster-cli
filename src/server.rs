@@ -127,7 +127,7 @@ impl Server {
     ) -> Self {
         match TcpStream::connect((ip.as_str(), port)).await {
             Ok(socket) => {
-                let addr = socket.peer_addr().unwrap(); // TODO figure out if this is ever gonna cause a problem
+                let addr = socket.peer_addr().unwrap(); // TODO figure out if this unwrap is ever gonna cause a problem
 
                 // let cx = TlsConnector::builder()
                 //     .danger_accept_invalid_certs(true)
@@ -138,7 +138,6 @@ impl Server {
                 let (read_half, write_half) = tokio::io::split(socket);
 
                 let net_tx = tx.clone();
-                // let the_ip = ip.to_owned();
                 tokio::spawn(async move {
                     tokio::select! {
                         _ = Self::run_network(net_tx, read_half, addr) => {},
@@ -170,38 +169,12 @@ impl Server {
         }
     }
 
+    #[rustfmt::skip]
     pub fn to_offline(self, offline_reason: String) -> Self {
         match self {
-            Self::Online {
-                ip,
-                port,
-                name,
-                uuid,
-                uname,
-                ..
-            } => Server::Offline {
-                offline_reason,
-                ip,
-                port,
-                name,
-                uuid,
-                uname,
-            },
-            Self::Offline {
-                ip,
-                port,
-                name,
-                uuid,
-                uname,
-                ..
-            } => Server::Offline {
-                offline_reason,
-                ip,
-                port,
-                name,
-                uuid,
-                uname,
-            },
+            Self::Online  { ip, port, name, uuid, uname, .. }
+          | Self::Offline { ip, port, name, uuid, uname, .. } =>
+                Server::Offline { offline_reason, ip, port, name, uuid, uname },
         }
     }
 
@@ -280,17 +253,6 @@ impl Server {
                 self.set_uname(username.into());
             }
         }
-        self.write(GetIconRequest).await?;
-        self.write(GetNameRequest).await?;
-        self.write(GetMetadataRequest).await?;
-        self.write(ListChannelsRequest).await?;
-        self.write(OnlineRequest).await?;
-        // self.write(HistoryRequest {
-        //     num: 100,
-        //     channel: 0,
-        //     before_message: None,
-        // })
-        // .await?;
         Ok(())
     }
 
@@ -339,6 +301,16 @@ impl Server {
         FmtString::concat(pfp, formatted)
     }
 
+    async fn post_init(&mut self) -> Result<(), std::io::Error> {
+        use Request::*;
+        self.write(GetIconRequest).await?;
+        self.write(GetNameRequest).await?;
+        self.write(GetMetadataRequest).await?;
+        self.write(ListChannelsRequest).await?;
+        self.write(OnlineRequest).await?;
+        Ok(())
+    }
+
     pub fn handle_network_packet(&mut self, response: Response) {
         if let Self::Online {
             peers,
@@ -350,10 +322,11 @@ impl Server {
             ..
         } = self
         {
+            use api::Status;
             use Response::*;
             match response {
-                GetMetadataResponse { data } => {
-                    for elem in data {
+                GetMetadataResponse { data, .. } => {
+                    for elem in data.unwrap() {
                         let peer_uuid = elem.uuid;
                         let peer = Peer::from_user(elem);
                         if uuid.is_some_and(|uuid| uuid == peer_uuid) {
@@ -365,15 +338,33 @@ impl Server {
                         peers.insert(peer_uuid, peer);
                     }
                 }
-                RegisterResponse { uuid: new_uuid } => *uuid = Some(new_uuid),
-                LoginResponse { uuid: new_uuid } => *uuid = Some(new_uuid),
-                GetNameResponse { data } => *name = Some(data),
-                ListChannelsResponse { data } => *channels = data,
-                HistoryResponse { data } => loaded_messages.extend(
-                    data.into_iter()
+                RegisterResponse { uuid: new_uuid, .. } => *uuid = Some(new_uuid.unwrap()),
+                LoginResponse {
+                    uuid: Some(new_uuid),
+                    status: Status::Ok,
+                } => {
+                    self.post_init();
+                    *uuid = Some(new_uuid);
+                }
+                LoginResponse {
+                    status: Status::NotFound,
+                    ..
+                } => {
+                    // Try register instead
+                    // TODO FINISH THIS: save the uname somewhere or the id or something and try to register.
+                    self.write(Request::RegisterRequest {
+                        passwd: "a".into(),
+                        uname: self.uname(),
+                    });
+                }
+                GetNameResponse { data, .. } => *name = Some(data.unwrap()),
+                ListChannelsResponse { data, .. } => *channels = data.unwrap(),
+                HistoryResponse { data, .. } => loaded_messages.extend(
+                    data.unwrap()
+                        .into_iter()
                         .map(|message| Self::format_message(&message, peers)),
                 ),
-                ContentResponse(message) => {
+                ContentResponse { message, .. } => {
                     loaded_messages.push(Self::format_message(&message, peers))
                 }
                 _ => (),

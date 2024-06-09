@@ -145,27 +145,7 @@ impl GUI {
     pub async fn handle_keyboard(&mut self, key: Event) -> bool {
         match key.clone() {
             Event::Key(Key::Ctrl('c')) => return false,
-            Event::Key(Key::Ctrl('n')) => {
-                self.mode = Mode::NewServer;
-                self.prompt = Some(Prompt::new(
-                    "Add a server",
-                    vec![
-                        PromptField::String {
-                            name: "IP",
-                            default: None,
-                        },
-                        PromptField::U16 {
-                            name: "Port",
-                            default: Some(2345),
-                        },
-                        PromptField::String {
-                            name: "Username",
-                            default: None,
-                        },
-                    ],
-                    vec!["Connect", "Cancel"],
-                ));
-            }
+            Event::Key(Key::Ctrl('n')) => {}
             Event::Key(Key::Alt('c')) => {
                 self.focus = Focus::ChannelList;
             }
