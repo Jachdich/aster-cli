@@ -311,7 +311,7 @@ impl Server {
         Ok(())
     }
 
-    pub fn handle_network_packet(&mut self, response: Response) {
+    pub async fn handle_network_packet(&mut self, response: Response) -> Result<(), String> {
         if let Self::Online {
             peers,
             uuid,
@@ -343,19 +343,39 @@ impl Server {
                     uuid: Some(new_uuid),
                     status: Status::Ok,
                 } => {
-                    self.post_init();
                     *uuid = Some(new_uuid);
+                    self.post_init().await.unwrap(); // TODO get rid of this unwrap
                 }
                 LoginResponse {
                     status: Status::NotFound,
                     ..
                 } => {
                     // Try register instead
-                    // TODO FINISH THIS: save the uname somewhere or the id or something and try to register.
                     self.write(Request::RegisterRequest {
                         passwd: "a".into(),
-                        uname: self.uname(),
-                    });
+                        uname: self
+                            .uname()
+                            .ok_or("No username to register with!".to_owned())?
+                            .into(),
+                    })
+                    .await
+                    .unwrap(); // TODO get rid of this
+                }
+                LoginResponse {
+                    status: Status::Forbidden,
+                    ..
+                } => {
+                    return Err(format!(
+                        "Invalid password for {}@{}:{}",
+                        self.uname().unwrap_or(
+                            self.uuid()
+                                .map(|uuid| format!("{}", uuid))
+                                .unwrap_or("{unknown}".to_owned()) // this should never happen, but just in case
+                                .as_str()
+                        ),
+                        self.ip(),
+                        self.port()
+                    ));
                 }
                 GetNameResponse { data, .. } => *name = Some(data.unwrap()),
                 ListChannelsResponse { data, .. } => *channels = data.unwrap(),
@@ -367,8 +387,17 @@ impl Server {
                 ContentResponse { message, .. } => {
                     loaded_messages.push(Self::format_message(&message, peers))
                 }
-                _ => (),
+                _ => {
+                    return Err(format!(
+                        "Non-OK status from {}:{}: {}: {}",
+                        self.ip(),
+                        self.port(),
+                        response.name(),
+                        response.status(),
+                    ))
+                }
             }
         }
+        Ok(())
     }
 }

@@ -13,6 +13,28 @@ pub enum Status {
     MethodNotAllowed = 405,
 }
 
+impl Status {
+    fn name(&self) -> String {
+        match self {
+            Status::Ok => "Ok",
+            Status::BadRequest => "Bad Request",
+            Status::InternalError => "Internal Error",
+            Status::Unauthorised => "Unauthorised",
+            Status::Forbidden => "Forbidden",
+            Status::NotFound => "Not Found",
+            Status::MethodNotAllowed => "Method Not Allowed",
+        }
+        .to_owned()
+    }
+}
+
+impl std::fmt::Display for Status {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        let name = self.name();
+        write!(f, "{}", name)
+    }
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct SyncServer {
     pub user_uuid: i64,
@@ -107,4 +129,52 @@ pub enum Response {
     #[serde(rename = "content")]          ContentResponse        { status: Status, #[serde(flatten)] message: Message },
     #[serde(rename = "API_version")]      APIVersion             { status: Status, version: [u8; 3] },
     #[serde(rename = "send")]             SendResponse           { status: Status },
+}
+
+impl Response {
+    pub fn status(&self) -> Status {
+        // helper to get the status of any event
+        // wish there was a better way
+        use Response::*;
+        *match self {
+            RegisterResponse { status, .. } => status,
+            LoginResponse { status, .. } => status,
+            GetMetadataResponse { status, .. } => status,
+            SyncGetServersResponse { status, .. } => status,
+            OnlineResponse { status, .. } => status,
+            HistoryResponse { status, .. } => status,
+            GetUserResponse { status, .. } => status,
+            GetIconResponse { status, .. } => status,
+            GetNameResponse { status, .. } => status,
+            ListChannelsResponse { status, .. } => status,
+            GetEmojiResponse { status, .. } => status,
+            ListEmojiResponse { status, .. } => status,
+            SyncGetResponse { status, .. } => status,
+            ContentResponse { status, .. } => status,
+            APIVersion { status, .. } => status,
+            SendResponse { status, .. } => status,
+        }
+    }
+    pub fn name(&self) -> &'static str {
+        // likewise for the name
+        use Response::*;
+        match self {
+            RegisterResponse { .. } => "RegisterResponse",
+            LoginResponse { .. } => "LoginResponse",
+            GetMetadataResponse { .. } => "GetMetadataResponse",
+            SyncGetServersResponse { .. } => "SyncGetServersResponse",
+            OnlineResponse { .. } => "OnlineResponse",
+            HistoryResponse { .. } => "HistoryResponse",
+            GetUserResponse { .. } => "GetUserResponse",
+            GetIconResponse { .. } => "GetIconResponse",
+            GetNameResponse { .. } => "GetNameResponse",
+            ListChannelsResponse { .. } => "ListChannelsResponse",
+            GetEmojiResponse { .. } => "GetEmojiResponse",
+            ListEmojiResponse { .. } => "ListEmojiResponse",
+            SyncGetResponse { .. } => "SyncGetResponse",
+            ContentResponse { .. } => "ContentResponse",
+            APIVersion { .. } => "APIVersion",
+            SendResponse { .. } => "SendResponse",
+        }
+    }
 }

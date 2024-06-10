@@ -280,15 +280,16 @@ impl GUI {
                         serde_json::from_str(&msg);
                     match obj {
                         Ok(obj) => {
-                            let status: Status =
-                                serde_json::from_value(obj["status"].clone()).unwrap();
-                            // if status != Status::Ok {
-                            //     panic!("We likely did something wrong, non-ok status: {:?}", obj)
-                            // }
                             let response: Response = serde_json::from_value(obj).unwrap();
-                            self.get_server_by_addr(addr)
+                            match self
+                                .get_server_by_addr(addr)
                                 .expect("Network packet recv'd for offline server")
-                                .handle_network_packet(response, status);
+                                .handle_network_packet(response)
+                                .await
+                            {
+                                Ok(()) => (),
+                                Err(e) => self.send_system(&e),
+                            }
                         }
                         Err(_) => {
                             //ignore for now

@@ -173,6 +173,8 @@ impl GUI {
                     // The unwraps here are ugly (TODO) but they should be ok, since we define the right types earlier on
                     let id =
                         crate::server::Identification::Username(p.get_str("Username").unwrap());
+
+                    // TODO its own function so it can also be called inside the `/connect` command handler
                     self.servers.push(
                         Server::new(
                             p.get_str("IP").unwrap().to_owned(),
