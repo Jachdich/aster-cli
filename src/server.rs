@@ -113,8 +113,8 @@ impl Server {
     pub fn set_uname(&mut self, v: String) { match self { Self::Online { uname, .. } | Self::Offline { uname, .. } => *uname = Some(v) }}
 }
 
-pub enum Identification<'a> {
-    Username(&'a str),
+pub enum Identification {
+    Username(String),
     Uuid(i64),
 }
 
@@ -229,7 +229,7 @@ impl Server {
 
     pub async fn initialise(
         &mut self,
-        id: Identification<'_>,
+        id: Identification,
     ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         use Request::*;
         match id {
@@ -246,11 +246,11 @@ impl Server {
             Identification::Username(username) => {
                 self.write(LoginRequest {
                     passwd: "a".into(),
-                    uname: Some(username.into()),
+                    uname: Some(username.clone()),
                     uuid: None,
                 })
                 .await?;
-                self.set_uname(username.into());
+                self.set_uname(username);
             }
         }
         Ok(())

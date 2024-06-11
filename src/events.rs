@@ -4,6 +4,7 @@ use crate::api;
 use crate::gui::GUI;
 use crate::prompt::EditBuffer;
 use crate::prompt::{Prompt, PromptEvent, PromptField};
+use crate::server::Identification;
 use crate::server::Server;
 use termion::event::{Event, Key, MouseButton, MouseEvent};
 
@@ -170,24 +171,12 @@ impl GUI {
                 Some(PromptEvent::ButtonPressed("Connect")) => {
                     // TODO LOTS OF ERROR HANDLING LOL
                     // this will break at the slight hint of any issue
-                    // The unwraps here are ugly (TODO) but they should be ok, since we define the right types earlier on
-                    let id =
-                        crate::server::Identification::Username(p.get_str("Username").unwrap());
 
-                    // TODO its own function so it can also be called inside the `/connect` command handler
-                    self.servers.push(
-                        Server::new(
-                            p.get_str("IP").unwrap().to_owned(),
-                            p.get_u16("Port").unwrap(),
-                            self.tx.clone(),
-                            self.cancel.subscribe(),
-                        )
-                        .await,
-                    );
-                    let conn = self.servers.last_mut().unwrap();
-                    if conn.is_online() {
-                        conn.initialise(id).await.unwrap();
-                    }
+                    // The unwraps here are ugly (TODO) but they should be ok, since we define the right types earlier on
+                    let id = Identification::Username(p.get_str("Username").unwrap().into());
+                    let ip = p.get_str("IP").unwrap().to_owned();
+                    let port = p.get_u16("Port").unwrap();
+                    self.connect_to_server(ip, port, id);
                     self.mode = Mode::Messages;
                 }
                 Some(PromptEvent::ButtonPressed("Cancel")) => {

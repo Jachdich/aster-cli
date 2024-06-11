@@ -1,9 +1,9 @@
 extern crate termion;
 
-use crate::api::{Message, Request, Response, Status, User};
+use crate::api::{Message, Request, Response, Status, SyncData, User};
 use crate::drawing::Theme;
 use crate::prompt::{EditBuffer, Prompt, PromptField};
-use crate::server::Server;
+use crate::server::{Identification, Server};
 use crate::Focus;
 use crate::LocalMessage;
 use crate::Mode;
@@ -31,6 +31,7 @@ pub struct GUI {
     pub width: u16,
     pub height: u16,
     pub cancel: broadcast::Sender<()>,
+    pub settings: SyncData, // TODO better settings struct
 
     pub draw_border: bool,
     pub border_buffer: String,
@@ -55,7 +56,7 @@ async fn init_server(
         let id = if let Some(uuid) = serv["uuid"].as_i64() {
             crate::server::Identification::Uuid(uuid)
         } else if let Some(uname) = serv["uname"].as_str() {
-            crate::server::Identification::Username(uname)
+            crate::server::Identification::Username(uname.to_owned())
         } else {
             return None;
         };
@@ -135,6 +136,12 @@ impl GUI {
 
             draw_border: true,
             border_buffer: String::new(),
+
+            settings: SyncData {
+                user_uuid: 0,
+                uname: "hello world".into(),
+                pfp: "nah".into(),
+            },
         }
     }
 
@@ -218,8 +225,13 @@ impl GUI {
                 Ok(())
             }
 
-            "/new" => {
-                if argv.len() == 2 {}
+            "/connect" => {
+                if argv.len() == 2 {
+                    let id = Identification::Username(self.settings.uname.clone());
+                    // TODO this is dumb... finish this
+                    // let (ip, port) = argv[1].split_once(":").ok_or(CommandError("Invalid format for /connect: expected [username@]hostname:port".into());
+                    self.connect_to_server(ip, port, id);
+                }
                 self.mode = Mode::NewServer;
                 self.prompt = Some(Prompt::new(
                     "Add a server",
@@ -234,7 +246,7 @@ impl GUI {
                         },
                         PromptField::String {
                             name: "Username",
-                            default: None,
+                            default: Some(self.settings.uname.clone()),
                         },
                     ],
                     vec!["Connect", "Cancel"],
@@ -244,6 +256,14 @@ impl GUI {
             }
             _ => Err(CommandError(format!("Unknown command '{}'", argv[0]))),
         }
+    }
+
+    pub async fn connect_to_server(&mut self, ip: String, port: u16, id: Identification) {
+        let mut conn = Server::new(ip, port, self.tx.clone(), self.cancel.subscribe()).await;
+        if conn.is_online() {
+            conn.initialise(id).await.unwrap();
+        }
+        self.servers.push(conn);
     }
 
     fn save_config(&mut self) {
