@@ -174,7 +174,7 @@ impl Prompt {
     }
 
     pub fn height(&self) -> u16 {
-        self.fields.len() as u16 + 1
+        self.fields.len() as u16 + 2 // + 1 for buttons, + 1 for title
     }
 
     pub fn draw<W: std::io::Write>(&self, screen: &mut W, x: u16, y: u16, theme: &Theme) {
@@ -185,30 +185,20 @@ impl Prompt {
             .max()
             .unwrap(); // unwrap: we must have at least one field
 
-        let spaces = if self.name.len() < align {
-            " ".repeat((align - self.name.len()) / 2)
-        } else {
-            "".to_owned()
-        }; // TODO does not work + move the whole menu up because otherwise it breaks
+        // draw the title at the top
+        write!(screen, "{}{}", termion::cursor::Goto(x, y), self.name).unwrap();
 
-        write!(
-            screen,
-            "{}{}{}{}",
-            termion::cursor::Goto(x, y),
-            spaces,
-            self.name,
-            spaces
-        )
-        .unwrap();
-
+        // draw each field, along with its associated buffer`
         let mut idx = 0;
         for (field, buffer) in std::iter::zip(self.fields.iter(), self.buffers.iter()) {
+            // calculate the selected index
             let idx2 = if let Selection::Field(idx2) = self.selected {
                 idx2
             } else {
                 usize::MAX // I hope this will never equal idx
             };
 
+            // if our index is the selected index, draw with colour
             if idx2 == idx {
                 write!(
                     screen,
@@ -236,6 +226,7 @@ impl Prompt {
             idx += 1;
         }
 
+        // move cursor to draw the buttons all on one line
         write!(
             screen,
             "{}",
@@ -243,6 +234,7 @@ impl Prompt {
         )
         .unwrap();
 
+        // similar code for drawing the buttons
         idx = 0;
         for button in &self.buttons {
             let idx2 = if let Selection::Button(idx2) = self.selected {
@@ -266,6 +258,8 @@ impl Prompt {
             idx += 1;
         }
 
+        // Move the cursor to the edit position of the selected buffer,
+        // or else to some arbitrary location if none is selected
         write!(
             screen,
             "{}",
