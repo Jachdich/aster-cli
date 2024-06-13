@@ -227,7 +227,7 @@ impl Theme {
         })
     }
 
-    fn get_list_height(&self, height: u16) -> usize {
+    pub fn get_list_height(&self, height: u16) -> usize {
         (height
             - 1
             - self.channels.border.top.width()
@@ -236,18 +236,18 @@ impl Theme {
             - self.servers.border.bottom.width()) as usize
     }
 
-    fn get_servers_start_pos(&self) -> usize {
+    pub fn get_servers_start_pos(&self) -> usize {
         (self.channels.border.top.width() + 2 + self.channels.border.bottom.width() * 2) as usize
     }
 
-    fn get_channels_start_pos(&self, height: u16) -> usize {
+    pub fn get_channels_start_pos(&self, height: u16) -> usize {
         self.get_servers_start_pos() as usize
             + self.get_servers_height(height) as usize
             + self.channels.border.bottom.width() as usize
             + self.servers.border.top.width() as usize
     }
 
-    fn get_servers_height(&self, height: u16) -> usize {
+    pub fn get_servers_height(&self, height: u16) -> usize {
         let list_height = self.get_list_height(height);
         if list_height % 2 == 0 {
             list_height / 2 - 1
@@ -255,7 +255,7 @@ impl Theme {
             list_height / 2
         }
     }
-    fn get_channels_height(&self, height: u16) -> usize {
+    pub fn get_channels_height(&self, height: u16) -> usize {
         let list_height = self.get_list_height(height);
         list_height / 2
     }
@@ -332,22 +332,16 @@ impl GUI {
             let display_name = server.name().unwrap_or(backup_name.as_str());
             write!(
                 self.screen,
-                "{}{}{}{}{}{}{}{}{}",
+                "{}{}{}{}{}{}{}{}",
                 termion::cursor::Goto(1 + self.theme.servers.border.left.width(), vert_pos),
                 termion::color::Fg(termion::color::Reset),
                 termion::color::Bg(termion::color::Reset),
                 if Some(idx) == self.curr_server {
                     self.theme.servers.selected_text.clone()
-                } else {
-                    self.theme.servers.text.clone()
-                },
-                if let Server::Offline { .. } = server {
+                } else if let Server::Offline { .. } = server {
                     self.theme.servers.error_text.clone()
                 } else {
-                    Colour2 {
-                        fg: Colour::Default,
-                        bg: Colour::Default,
-                    }
+                    self.theme.servers.text.clone()
                 },
                 display_name,
                 " ".repeat(self.theme.left_margin - display_name.len()),

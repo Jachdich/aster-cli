@@ -72,6 +72,31 @@ impl GUI {
                 self.scroll += 1;
             }
 
+            Event::Mouse(MouseEvent::Press(MouseButton::Left, x, y)) => {
+                if x < self.theme.left_margin as u16 + self.theme.channels.border.left.width() // ??
+                    && x > self.theme.channels.border.left.width()
+                    && y >= self.theme.get_servers_start_pos() as u16
+                    && y < self.theme.get_channels_start_pos(self.height) as u16 - 1
+                {
+                    let idx = y as usize - self.theme.get_servers_start_pos();
+                    self.send_system(idx.to_string().as_str());
+                    let Some(curr_server) = self.curr_server.map(|idx| &mut self.servers[idx])
+                    else {
+                        return ();
+                    };
+                    let reload = if let Server::Online {
+                        channels,
+                        curr_channel,
+                        ..
+                    } = curr_server
+                    {
+                        idx < channels.len() && !curr_channel.is_some_and(|c| c == idx)
+                    } else {
+                        false
+                    };
+                }
+            }
+
             _ => (),
         }
     }
@@ -139,7 +164,7 @@ impl GUI {
                 let channel = channels[curr_channel.unwrap()].uuid;
                 let res = write_half
                     .write_request(api::Request::HistoryRequest {
-                        num: 1000,
+                        num: 100,
                         channel,
                         before_message: None,
                     })

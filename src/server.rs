@@ -74,60 +74,78 @@ impl Peer {
     }
 }
 
-// TODO: which of name, uname and uuid, if any, should be Options?
-pub enum Server {
-    Online {
-        loaded_messages: Vec<FmtString>,
-        channels: Vec<Channel>,
-        curr_channel: Option<usize>,
-        peers: HashMap<i64, Peer>,
-        write_half: WriteHalf<SocketStream>,
-        remote_addr: SocketAddr,
-        ip: String,
-        port: u16,
-        name: Option<String>,
-        uuid: Option<i64>,
-        uname: Option<String>,
-    },
-    Offline {
-        offline_reason: String,
-        ip: String,
-        port: u16,
-        name: Option<String>,
-        uuid: Option<i64>,
-        uname: Option<String>,
-    },
+// pub enum Server {
+//     Online {
+//         loaded_messages: Vec<FmtString>,
+//         channels: Vec<Channel>,
+//         curr_channel: Option<usize>,
+//         peers: HashMap<i64, Peer>,
+//         write_half: WriteHalf<SocketStream>,
+//         remote_addr: SocketAddr,
+//         ip: String,
+//         port: u16,
+//         name: Option<String>,
+//         uuid: Option<i64>,
+//         uname: Option<String>,
+//     },
+//     Offline {
+//         offline_reason: String,
+//         ip: String,
+//         port: u16,
+//         name: Option<String>,
+//         uuid: Option<i64>,
+//         uname: Option<String>,
+//     },
+// }
+
+pub struct OnlineServer {
+    pub loaded_messages: Vec<FmtString>,
+    pub channels: Vec<Channel>,
+    pub curr_channel: Option<usize>,
+    pub peers: HashMap<i64, Peer>,
+    pub write_half: WriteHalf<SocketStream>,
+    pub remote_addr: SocketAddr,
 }
+
+pub struct Server {
+    pub ip: String,
+    pub port: u16,
+    pub name: Option<String>,
+    pub uuid: Option<i64>,
+    pub uname: Option<String>,
+    pub network: Result<OnlineServer, String>,
+}
+
 impl Serialize for Server {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let mut state = serializer.serialize_struct("Server", 5)?;
-        state.serialize_field("name", &self.name())?;
-        state.serialize_field("ip", &self.ip())?;
-        state.serialize_field("port", &self.port())?;
-        state.serialize_field("uuid", &self.uuid())?;
-        state.serialize_field("uname", &self.uname())?;
+        state.serialize_field("name", &self.name)?;
+        state.serialize_field("ip", &self.ip)?;
+        state.serialize_field("port", &self.port)?;
+        state.serialize_field("uuid", &self.uuid)?;
+        state.serialize_field("uname", &self.uname)?;
         state.end()
     }
 }
 
-#[rustfmt::skip]
-#[allow(dead_code)] // because some methods might not be used yet but are included for completeness
-impl Server {
-    pub fn name(&self) -> Option<&str> {
-        match self { Self::Online { name, .. } | Self::Offline { name, .. } => name.as_ref().map(|x| x.as_str()) }
-    }
-    pub fn uname(&self) -> Option<&str> {
-        match self { Self::Online { uname, .. } | Self::Offline { uname, .. } => uname.as_ref().map(|x| x.as_str()) }
-    }
-    pub fn ip(&self) -> &str { match self { Self::Online { ip, .. } | Self::Offline { ip, .. } => &ip }}
-    pub fn port(&self) -> u16 { match self { Self::Online { port, .. } | Self::Offline { port, .. } => *port }}
-    pub fn uuid(&self) -> Option<i64> { match self { Self::Online { uuid, .. } | Self::Offline { uuid, .. } => *uuid }}
-    pub fn set_ip(&mut self, v: String)    { match self { Self::Online { ip, .. }    | Self::Offline { ip, .. }    => *ip = v }}
-    pub fn set_port(&mut self, v: u16)     { match self { Self::Online { port, .. }  | Self::Offline { port, .. }  => *port = v }}
-    pub fn set_uuid(&mut self, v: i64)     { match self { Self::Online { uuid, .. }  | Self::Offline { uuid, .. }  => *uuid = Some(v) }}
-    pub fn set_name(&mut self, v: String)  { match self { Self::Online { name, .. }  | Self::Offline { name, .. }  => *name = Some(v) }}
-    pub fn set_uname(&mut self, v: String) { match self { Self::Online { uname, .. } | Self::Offline { uname, .. } => *uname = Some(v) }}
-}
+// #[rustfmt::skip]
+// #[allow(dead_code)] // because some methods might not be used yet but are included for completeness
+// impl Server {
+//     pub fn name(&self) -> Option<&str> {
+//         match self { Self::Online { name, .. } | Self::Offline { name, .. } => name.as_ref().map(|x| x.as_str()) }
+//     }
+//     pub fn uname(&self) -> Option<&str> {
+//         match self { Self::Online { uname, .. } | Self::Offline { uname, .. } => uname.as_ref().map(|x| x.as_str()) }
+//     }
+//     pub fn ip(&self) -> &str { match self { Self::Online { ip, .. } | Self::Offline { ip, .. } => &ip }}
+//     pub fn port(&self) -> u16 { match self { Self::Online { port, .. } | Self::Offline { port, .. } => *port }}
+//     pub fn uuid(&self) -> Option<i64> { match self { Self::Online { uuid, .. } | Self::Offline { uuid, .. } => *uuid }}
+//     pub fn set_ip(&mut self, v: String)    { match self { Self::Online { ip, .. }    | Self::Offline { ip, .. }    => *ip = v }}
+//     pub fn set_port(&mut self, v: u16)     { match self { Self::Online { port, .. }  | Self::Offline { port, .. }  => *port = v }}
+//     pub fn set_uuid(&mut self, v: i64)     { match self { Self::Online { uuid, .. }  | Self::Offline { uuid, .. }  => *uuid = Some(v) }}
+//     pub fn set_name(&mut self, v: String)  { match self { Self::Online { name, .. }  | Self::Offline { name, .. }  => *name = Some(v) }}
+//     pub fn set_uname(&mut self, v: String) { match self { Self::Online { uname, .. } | Self::Offline { uname, .. } => *uname = Some(v) }}
+// }
 
 pub enum Identification {
     Username(String),
@@ -185,20 +203,12 @@ impl Server {
         }
     }
 
-    #[rustfmt::skip]
-    pub fn to_offline(self, offline_reason: String) -> Self {
-        match self {
-            Self::Online  { ip, port, name, uuid, uname, .. }
-          | Self::Offline { ip, port, name, uuid, uname, .. } =>
-                Server::Offline { offline_reason, ip, port, name, uuid, uname },
-        }
+    pub fn to_offline(&mut self, offline_reason: String) {
+        self.network = Err(offline_reason);
     }
 
     pub fn is_online(&self) -> bool {
-        match self {
-            Self::Online { .. } => true,
-            Self::Offline { .. } => false,
-        }
+        self.network.is_ok()
     }
 
     // pub fn add_message(&mut self, content: FmtString, author: u64) {
