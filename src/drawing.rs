@@ -8,14 +8,14 @@ use std::io::Write;
 fn centred(text: &str, width: usize) -> String {
     format!("{: ^1$}", text, width)
 }
-fn fmtchar_from_json_impl(val: &json::JsonValue) -> Option<FmtChar> {
+fn fmtchar_from_json_impl(val: &serde_json::Value) -> Option<FmtChar> {
     Some(FmtChar {
         ch: val[0].as_str()?.chars().next()?,
         fg: parse_colour(&val[1].as_str()?),
         bg: parse_colour(&val[2].as_str()?),
     })
 }
-pub fn fmtchar_from_json(val: &json::JsonValue) -> OptionalFmtChar {
+pub fn fmtchar_from_json(val: &serde_json::Value) -> OptionalFmtChar {
     OptionalFmtChar(fmtchar_from_json_impl(val))
 }
 
@@ -122,9 +122,9 @@ pub struct Theme {
 
 fn get_or<'a>(
     name: &str,
-    main: &'a json::JsonValue,
-    aux: &'a json::JsonValue,
-) -> &'a json::JsonValue {
+    main: &'a serde_json::Value,
+    aux: &'a serde_json::Value,
+) -> &'a serde_json::Value {
     if main[name].is_null() {
         &aux[name]
     } else {
@@ -133,31 +133,59 @@ fn get_or<'a>(
 }
 
 impl ThemedArea {
-    pub fn new(cfg: &json::JsonValue, fallback: &json::JsonValue) -> Self {
+    pub fn new(cfg: &serde_json::Value, fallback: &serde_json::Value) -> Self {
         ThemedArea {
             text: Colour2 {
-                fg: parse_colour(&get_or("text-foreground", cfg, fallback).to_string()),
-                bg: parse_colour(&get_or("text-background", cfg, fallback).to_string()),
+                fg: parse_colour(&get_or("text-foreground", cfg, fallback).as_str().unwrap()),
+                bg: parse_colour(&get_or("text-background", cfg, fallback).as_str().unwrap()),
             },
             selected_text: Colour2 {
-                fg: parse_colour(&get_or("selected-text-foreground", cfg, fallback).to_string()),
-                bg: parse_colour(&get_or("selected-text-background", cfg, fallback).to_string()),
+                fg: parse_colour(
+                    &get_or("selected-text-foreground", cfg, fallback)
+                        .as_str()
+                        .unwrap(),
+                ),
+                bg: parse_colour(
+                    &get_or("selected-text-background", cfg, fallback)
+                        .as_str()
+                        .unwrap(),
+                ),
             },
             unfocussed_selected_text: Colour2 {
                 fg: parse_colour(
-                    &get_or("unfocussed-selected-text-foreground", cfg, fallback).to_string(),
+                    &get_or("unfocussed-selected-text-foreground", cfg, fallback)
+                        .as_str()
+                        .unwrap(),
                 ),
                 bg: parse_colour(
-                    &get_or("unfocussed-selected-text-background", cfg, fallback).to_string(),
+                    &get_or("unfocussed-selected-text-background", cfg, fallback)
+                        .as_str()
+                        .unwrap(),
                 ),
             },
             error_text: Colour2 {
-                fg: parse_colour(&get_or("error-text-foreground", cfg, fallback).to_string()),
-                bg: parse_colour(&get_or("error-text-background", cfg, fallback).to_string()),
+                fg: parse_colour(
+                    &get_or("error-text-foreground", cfg, fallback)
+                        .as_str()
+                        .unwrap(),
+                ),
+                bg: parse_colour(
+                    &get_or("error-text-background", cfg, fallback)
+                        .as_str()
+                        .unwrap(),
+                ),
             },
             system_message: Colour2 {
-                fg: parse_colour(&get_or("system-message-foreground", cfg, fallback).to_string()),
-                bg: parse_colour(&get_or("system-message-background", cfg, fallback).to_string()),
+                fg: parse_colour(
+                    &get_or("system-message-foreground", cfg, fallback)
+                        .as_str()
+                        .unwrap(),
+                ),
+                bg: parse_colour(
+                    &get_or("system-message-background", cfg, fallback)
+                        .as_str()
+                        .unwrap(),
+                ),
             },
 
             border: ThemedBorder {
@@ -180,7 +208,8 @@ impl ThemedArea {
 
 impl Theme {
     pub fn new(filename: &str) -> std::result::Result<Self, Box<dyn std::error::Error>> {
-        let totalcfg = json::parse(&std::fs::read_to_string(filename)?)?;
+        let totalcfg: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(filename)?)?;
 
         let servers = ThemedArea::new(&totalcfg["servers"], &totalcfg["global"]);
         let channels = ThemedArea::new(&totalcfg["channels"], &totalcfg["global"]);

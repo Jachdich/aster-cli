@@ -14,7 +14,6 @@ tokio-util = { version = "*", features = ["full"] }
 tokio-stream = { version = "*" }
 tokio-native-tls = "*"
 native-tls = "*"
-json = "*"
 regex = "*"
 dirs = "*"
 serde = { version = "1.0", features = ["derive"] }
