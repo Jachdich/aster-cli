@@ -8,6 +8,7 @@ use crate::Focus;
 use crate::LocalMessage;
 use crate::Mode;
 use fmtstring::FmtString;
+use serde::{Deserialize, Serialize};
 use std::convert::TryInto;
 use std::io::{stdout, Write};
 use std::net::SocketAddr;
@@ -15,6 +16,7 @@ use std::sync::mpsc::{Receiver, Sender};
 use termion::raw::IntoRawMode;
 use tokio::sync::broadcast;
 
+#[derive(Deserialize, Serialize)]
 pub struct Settings {
     pub uname: String,
     pub passwd: String,
@@ -26,7 +28,7 @@ pub struct GUI {
     pub buffer: EditBuffer,
     pub tx: Sender<LocalMessage>,
     pub rx: Receiver<LocalMessage>,
-    pub servers: Vec<Server>, // FEAT server folders
+    pub servers: Vec<Server>,
     pub curr_server: Option<usize>,
     pub mode: Mode,
     pub focus: Focus,
@@ -129,6 +131,8 @@ impl GUI {
             }
         }
 
+        let settings: Settings = serde_json::from_value(config).expect("Invalid config file!");
+
         let stdout = stdout();
         let screen = termion::input::MouseTerminal::from(stdout)
             .into_raw_mode()
@@ -157,11 +161,7 @@ impl GUI {
             draw_border: true,
             border_buffer: String::new(),
 
-            settings: Settings {
-                uname: "hello world".into(),
-                pfp: "nah".into(),
-                passwd: "a".into(),
-            },
+            settings,
         }
     }
 
@@ -174,8 +174,19 @@ impl GUI {
         let argv = cmd.split(" ").collect::<Vec<&str>>();
         match argv[0] {
             "/nick" => {
-                // self.config["uname"] = argv[1].into();
-                // TODO send to all servers
+                self.settings.uname = argv[1].to_owned();
+                for server in &mut self.servers {
+                    if let Server::Online { write_half, .. } = server {
+                        write_half
+                            .write_request(Request::NickRequest {
+                                nick: argv[1].to_owned(),
+                            })
+                            .await
+                            .unwrap(); // TODO UNWRAP REEE
+                    } else {
+                        // TODO: cache this to send later
+                    }
+                }
                 Ok(())
             }
 
@@ -230,7 +241,7 @@ impl GUI {
                 match Theme::new(&format!("themes/{}.json", argv[1])) {
                     Ok(theme) => {
                         self.theme = theme;
-                        // self.send_system(&format!("Changed theme to {}", argv[1]));
+                        self.send_system(&format!("Changed theme to {}", argv[1]));
                         // all of these potentially need drawing
                         // self.draw_border();
                         // self.draw_messages();
@@ -303,7 +314,8 @@ impl GUI {
         // TODO unwrap bade
         let mut file = std::fs::File::create("preferences.json").unwrap();
         let server_list = serde_json::to_value(&self.servers).unwrap();
-        let prefs = serde_json::json!({"servers": server_list});
+        let mut prefs = serde_json::to_value(&self.settings).unwrap();
+        prefs["servers"] = server_list;
         file.write_all(prefs.to_string().as_bytes()).unwrap();
     }
 

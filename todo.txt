@@ -1,0 +1,24 @@
+bugs:
+	- pressing tab in edit mode messes up the border
+features:
+	- passwords
+	- ask for & save username
+	- changing pfp, nickname, username (across all servers)
+	- images
+	- markdown
+	- mouse support (servers, channels, etc)
+	- clickable links
+	- multi line editing
+	- cache things like nick changes on offline servers to send when they're back online
+	- try to reconnect to offline servers periodically
+	- server folders
+	- current alt key combos are kinda bad
+code:
+	- figure out what to do when write causes an error
+	- migrate away from using raw json as much as possible
+	- clean up the theme system
+	- prompt: max_width
+in progress:
+	- config file
+done:
+	- pressing backspace in the prompt buffer does not remove the character from the screen

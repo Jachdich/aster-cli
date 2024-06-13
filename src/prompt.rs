@@ -124,9 +124,11 @@ impl Prompt {
 
     fn validate_field(&self, idx: usize) -> bool {
         let data = &self.buffers[idx].data;
+        let max_width = 48; // just so it isn't fucking stupid
+                            // TODO make this variable
         match self.fields[idx] {
-            PromptField::String { .. } => true,
-            PromptField::U16 { .. } => data.parse::<u16>().is_ok(),
+            PromptField::String { .. } => data.len() < max_width,
+            PromptField::U16 { .. } => data.parse::<u16>().is_ok() && data.len() < max_width,
             // PromptField::I64 { .. } => data.parse::<i64>().is_ok(),
         }
     }
@@ -202,7 +204,7 @@ impl Prompt {
             if idx2 == idx {
                 write!(
                     screen,
-                    "{}{}{}{}{}{}: {}",
+                    "{}{}{}{}{}{}: {} ",
                     termion::cursor::Goto(x, y + idx as u16 + 1),
                     theme.servers.selected_text,
                     field.name(),
@@ -215,7 +217,7 @@ impl Prompt {
             } else {
                 write!(
                     screen,
-                    "{}{}{}: {}",
+                    "{}{}{}: {} ",
                     termion::cursor::Goto(x, y + idx as u16 + 1),
                     field.name(),
                     " ".repeat(align - field.name().len()),
