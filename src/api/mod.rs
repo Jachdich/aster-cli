@@ -86,6 +86,7 @@ pub struct Message {
 #[derive(Serialize)]
 #[serde(tag = "command")]
 #[rustfmt::skip]
+#[allow(dead_code)]
 pub enum Request {
     #[serde(rename = "register")]         RegisterRequest { passwd: String, uname: String },
     #[serde(rename = "login")]            LoginRequest { passwd: String, uname: Option<String>, uuid: Option<i64> },

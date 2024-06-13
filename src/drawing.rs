@@ -251,7 +251,6 @@ impl GUI {
     pub fn draw_servers(&mut self) {
         let (_width, height) = termion::terminal_size().unwrap();
         let height = height - 1;
-        let list_height: u16 = self.theme.get_list_height(height) as u16;
 
         let mut vert_pos = self.theme.get_servers_start_pos() as u16;
         let mut idx = 0;
@@ -300,6 +299,8 @@ impl GUI {
         // vert_pos = self.theme.get_channels_start_pos(height) as u16 + 1;
         idx = 0;
         for server in &self.servers {
+            let backup_name = format!("<{}:{}>", server.ip(), server.port());
+            let display_name = server.name().unwrap_or(backup_name.as_str());
             write!(
                 self.screen,
                 "{}{}{}{}{}{}{}{}{}",
@@ -319,10 +320,8 @@ impl GUI {
                         bg: Colour::Default,
                     }
                 },
-                server.name().unwrap_or("Unknown Server"),
-                " ".repeat(
-                    self.theme.left_margin - server.name().unwrap_or("Unknown Server").len()
-                ),
+                display_name,
+                " ".repeat(self.theme.left_margin - display_name.len()),
                 termion::color::Fg(termion::color::Reset),
                 termion::color::Bg(termion::color::Reset),
             )

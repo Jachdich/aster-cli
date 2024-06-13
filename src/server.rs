@@ -18,6 +18,21 @@ use tokio::sync::broadcast::Receiver;
 
 type SocketStream = TcpStream;
 
+pub trait WriteAsterRequest {
+    async fn write_request(&mut self, command: api::Request) -> Result<usize, std::io::Error>;
+}
+
+impl WriteAsterRequest for WriteHalf<SocketStream> {
+    async fn write_request(&mut self, command: api::Request) -> Result<usize, std::io::Error> {
+        // Unwrap is fine because I'm pretty certain if the request can't be serialised
+        // then there's something dramatically wrong
+        let res =
+            AsyncWriteExt::write(self, serde_json::to_string(&command).unwrap().as_bytes()).await?;
+        self.write_u8(10).await?;
+        Ok(res)
+    }
+}
+
 // for info like pfp alreadt converted to a fmtstring
 pub struct Peer {
     pub uuid: i64,
@@ -96,6 +111,7 @@ impl Serialize for Server {
 }
 
 #[rustfmt::skip]
+#[allow(dead_code)] // because some methods might not be used yet but are included for completeness
 impl Server {
     pub fn name(&self) -> Option<&str> {
         match self { Self::Online { name, .. } | Self::Offline { name, .. } => name.as_ref().map(|x| x.as_str()) }
@@ -201,59 +217,49 @@ impl Server {
     //     }
     // }
 
-    pub async fn write(
-        &mut self,
-        command: api::Request,
-    ) -> std::result::Result<usize, std::io::Error> {
-        match self {
-            Self::Online { write_half, .. } => {
-                let res = write_half
-                    .write(serde_json::to_string(&command)?.as_bytes())
-                    .await?;
-                write_half.write_u8(10).await?;
-                Ok(res)
-            }
-            Self::Offline { .. } => Err(std::io::Error::new(
-                std::io::ErrorKind::NotConnected,
-                "Server is offline",
-            )),
-        }
-    }
-
-    pub async fn update_metadata(&mut self, meta: User) -> std::result::Result<(), std::io::Error> {
-        self.write(Request::NickRequest { nick: meta.name }).await?;
-        //self.write(object!{"command": "passwd", "passwd": meta.passwd}).await?;
-        self.write(Request::PfpRequest { data: meta.pfp }).await?;
-        Ok(())
-    }
+    // pub async fn update_metadata(&mut self, meta: User) -> std::result::Result<(), std::io::Error> {
+    //     self.write(Request::NickRequest { nick: meta.name }).await?;
+    //     //self.write(object!{"command": "passwd", "passwd": meta.passwd}).await?;
+    //     self.write(Request::PfpRequest { data: meta.pfp }).await?;
+    //     Ok(())
+    // }
 
     pub async fn initialise(
         &mut self,
         id: Identification,
-    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    ) -> std::result::Result<(), std::io::Error> {
         use Request::*;
-        match id {
-            Identification::Uuid(uuid) => {
-                self.write(LoginRequest {
-                    passwd: "a".into(),
-                    uname: None,
-                    uuid: Some(uuid),
-                })
-                .await?;
-                self.set_uuid(uuid);
-                self.write(GetUserRequest { uuid }).await?; // just make certain we get our own name
-            }
-            Identification::Username(username) => {
-                self.write(LoginRequest {
-                    passwd: "a".into(),
-                    uname: Some(username.clone()),
-                    uuid: None,
-                })
-                .await?;
-                self.set_uname(username);
-            }
+        match self {
+            Self::Online { write_half, .. } => match id {
+                Identification::Uuid(uuid) => {
+                    write_half
+                        .write_request(LoginRequest {
+                            passwd: "a".into(),
+                            uname: None,
+                            uuid: Some(uuid),
+                        })
+                        .await?;
+                    write_half.write_request(GetUserRequest { uuid }).await?; // just make certain we get our own name
+                    self.set_uuid(uuid); // technically this should be before, but rust complains. should be fine.
+                    Ok(())
+                }
+                Identification::Username(username) => {
+                    write_half
+                        .write_request(LoginRequest {
+                            passwd: "a".into(),
+                            uname: Some(username.clone()),
+                            uuid: None,
+                        })
+                        .await?;
+                    self.set_uname(username);
+                    Ok(())
+                }
+            },
+            Self::Offline { .. } => Err(std::io::Error::new(
+                std::io::ErrorKind::NotConnected,
+                "Cannot initialise offline server!",
+            )),
         }
-        Ok(())
     }
 
     async fn run_network(
@@ -303,12 +309,20 @@ impl Server {
 
     async fn post_init(&mut self) -> Result<(), std::io::Error> {
         use Request::*;
-        self.write(GetIconRequest).await?;
-        self.write(GetNameRequest).await?;
-        self.write(GetMetadataRequest).await?;
-        self.write(ListChannelsRequest).await?;
-        self.write(OnlineRequest).await?;
-        Ok(())
+        match self {
+            Self::Online { write_half, .. } => {
+                write_half.write_request(GetIconRequest).await?;
+                write_half.write_request(GetNameRequest).await?;
+                write_half.write_request(GetMetadataRequest).await?;
+                write_half.write_request(ListChannelsRequest).await?;
+                write_half.write_request(OnlineRequest).await?;
+                Ok(())
+            }
+            Self::Offline { .. } => Err(std::io::Error::new(
+                std::io::ErrorKind::NotConnected,
+                "Cannot initialise offline server!",
+            )),
+        }
     }
 
     pub async fn handle_network_packet(&mut self, response: Response) -> Result<(), String> {
@@ -319,6 +333,7 @@ impl Server {
             loaded_messages,
             channels,
             uname,
+            write_half,
             ..
         } = self
         {
@@ -351,15 +366,17 @@ impl Server {
                     ..
                 } => {
                     // Try register instead
-                    self.write(Request::RegisterRequest {
-                        passwd: "a".into(),
-                        uname: self
-                            .uname()
-                            .ok_or("No username to register with!".to_owned())?
-                            .into(),
-                    })
-                    .await
-                    .unwrap(); // TODO get rid of this
+                    let uname = uname
+                        .as_ref()
+                        .ok_or("No username to register with!".to_owned())?
+                        .to_owned();
+                    write_half
+                        .write_request(Request::RegisterRequest {
+                            passwd: "a".into(),
+                            uname,
+                        })
+                        .await
+                        .unwrap(); // TODO get rid of this
                 }
                 LoginResponse {
                     status: Status::Forbidden,
@@ -388,13 +405,15 @@ impl Server {
                     loaded_messages.push(Self::format_message(&message, peers))
                 }
                 _ => {
-                    return Err(format!(
-                        "Non-OK status from {}:{}: {}: {}",
-                        self.ip(),
-                        self.port(),
-                        response.name(),
-                        response.status(),
-                    ))
+                    if response.status() != Status::Ok {
+                        return Err(format!(
+                            "Non-OK status from {}:{}: {}: {}",
+                            self.ip(),
+                            self.port(),
+                            response.name(),
+                            response.status(),
+                        ));
+                    }
                 }
             }
         }

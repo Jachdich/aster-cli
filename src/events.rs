@@ -3,9 +3,10 @@ use super::Mode;
 use crate::api;
 use crate::gui::GUI;
 use crate::prompt::EditBuffer;
-use crate::prompt::{Prompt, PromptEvent, PromptField};
+use crate::prompt::PromptEvent;
 use crate::server::Identification;
 use crate::server::Server;
+use crate::server::WriteAsterRequest;
 use termion::event::{Event, Key, MouseButton, MouseEvent};
 
 impl GUI {
@@ -35,19 +36,23 @@ impl GUI {
                         return;
                     };
 
-                    let res = self.servers[curr_server]
-                        .write(crate::api::Request::SendRequest {
-                            content: self.buffer.data.clone(),
-                            channel: curr_channel_uuid,
-                        })
-                        .await;
-                    match res {
-                        Ok(_) => {
-                            self.buffer = EditBuffer::new("".to_string());
+                    if let Server::Online { write_half, .. } = &mut self.servers[curr_server] {
+                        let res = write_half
+                            .write_request(crate::api::Request::SendRequest {
+                                content: self.buffer.data.clone(),
+                                channel: curr_channel_uuid,
+                            })
+                            .await;
+                        match res {
+                            Ok(_) => {
+                                self.buffer = EditBuffer::new("".to_string());
+                            }
+                            Err(error) => {
+                                self.send_system(error.to_string().as_str());
+                            }
                         }
-                        Err(error) => {
-                            self.send_system(error.to_string().as_str());
-                        }
+                    } else {
+                        self.send_system("Cannot send anything to an offline server!");
                     }
                 } else {
                     self.send_system("No server is selected you silly goose!");
@@ -96,11 +101,12 @@ impl GUI {
         let Some(curr_server) = self.curr_server else {
             return;
         };
-        let s = &mut self.servers[self.curr_server.unwrap()];
+        let s = &mut self.servers[curr_server];
         if let Server::Online {
             curr_channel,
             channels,
             loaded_messages,
+            write_half,
             ..
         } = s
         {
@@ -131,16 +137,26 @@ impl GUI {
             if reload {
                 loaded_messages.clear();
                 let channel = channels[curr_channel.unwrap()].uuid;
-                s.write(api::Request::HistoryRequest {
-                    num: 1000,
-                    channel,
-                    before_message: None,
-                })
-                .await;
+                let res = write_half
+                    .write_request(api::Request::HistoryRequest {
+                        num: 1000,
+                        channel,
+                        before_message: None,
+                    })
+                    .await;
+                if let Err(_) = res {
+                    // *s = (*s).to_offline(e.to_string());
+                    // TODO make the server offline
+                }
             }
         } else {
             panic!("Offline server somehow changed their chanel")
         }
+        // unsafe {
+        //     let server_ptr = &mut self.servers[curr_server] as *mut Server;
+        //     let new_server = (*server_ptr).to_offline("a".into());
+        // }
+        // self.servers[curr_server] = self.servers[curr_server].to_offline("a".to_string());
     }
 
     pub async fn handle_keyboard(&mut self, key: Event) -> bool {
@@ -176,7 +192,7 @@ impl GUI {
                     let id = Identification::Username(p.get_str("Username").unwrap().into());
                     let ip = p.get_str("IP").unwrap().to_owned();
                     let port = p.get_u16("Port").unwrap();
-                    self.connect_to_server(ip, port, id);
+                    self.connect_to_server(ip, port, id).await;
                     self.mode = Mode::Messages;
                 }
                 Some(PromptEvent::ButtonPressed("Cancel")) => {

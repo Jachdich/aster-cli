@@ -1,5 +1,5 @@
 use crate::drawing::Theme;
-use termion::event::{Event, Key, MouseButton, MouseEvent};
+use termion::event::{Event, Key};
 
 enum Selection {
     Field(usize),
@@ -127,7 +127,7 @@ impl Prompt {
         match self.fields[idx] {
             PromptField::String { .. } => true,
             PromptField::U16 { .. } => data.parse::<u16>().is_ok(),
-            PromptField::I64 { .. } => data.parse::<i64>().is_ok(),
+            // PromptField::I64 { .. } => data.parse::<i64>().is_ok(),
         }
     }
 
@@ -184,6 +184,23 @@ impl Prompt {
             .map(|field| field.name().len())
             .max()
             .unwrap(); // unwrap: we must have at least one field
+
+        let spaces = if self.name.len() < align {
+            " ".repeat((align - self.name.len()) / 2)
+        } else {
+            "".to_owned()
+        }; // TODO does not work + move the whole menu up because otherwise it breaks
+
+        write!(
+            screen,
+            "{}{}{}{}",
+            termion::cursor::Goto(x, y),
+            spaces,
+            self.name,
+            spaces
+        )
+        .unwrap();
+
         let mut idx = 0;
         for (field, buffer) in std::iter::zip(self.fields.iter(), self.buffers.iter()) {
             let idx2 = if let Selection::Field(idx2) = self.selected {
@@ -196,7 +213,7 @@ impl Prompt {
                 write!(
                     screen,
                     "{}{}{}{}{}{}: {}",
-                    termion::cursor::Goto(x, y + idx as u16),
+                    termion::cursor::Goto(x, y + idx as u16 + 1),
                     theme.servers.selected_text,
                     field.name(),
                     " ".repeat(align - field.name().len()),
@@ -209,7 +226,7 @@ impl Prompt {
                 write!(
                     screen,
                     "{}{}{}: {}",
-                    termion::cursor::Goto(x, y + idx as u16),
+                    termion::cursor::Goto(x, y + idx as u16 + 1),
                     field.name(),
                     " ".repeat(align - field.name().len()),
                     buffer.data,
@@ -222,7 +239,7 @@ impl Prompt {
         write!(
             screen,
             "{}",
-            termion::cursor::Goto(x, y + self.fields.len() as u16)
+            termion::cursor::Goto(x, y + self.fields.len() as u16 + 1)
         )
         .unwrap();
 
@@ -254,7 +271,7 @@ impl Prompt {
             "{}",
             if let Selection::Field(idx) = self.selected {
                 let sel_x = x + align as u16 + 2 + self.buffers[idx].edit_position as u16;
-                let sel_y = y + idx as u16;
+                let sel_y = y + idx as u16 + 1;
                 termion::cursor::Goto(sel_x, sel_y)
             } else {
                 termion::cursor::Goto(1, 1)
@@ -283,14 +300,14 @@ impl Prompt {
             Err(FieldError::WrongType)
         }
     }
-    pub fn get_i64(&self, key: &str) -> Result<i64, FieldError> {
-        let idx = self.index_from_str(key).ok_or(FieldError::NoSuchField)?;
-        if let PromptField::I64 { .. } = self.fields[idx] {
-            Ok(self.buffers[idx].data.parse().unwrap()) // Likewise
-        } else {
-            Err(FieldError::WrongType)
-        }
-    }
+    // pub fn get_i64(&self, key: &str) -> Result<i64, FieldError> {
+    //     let idx = self.index_from_str(key).ok_or(FieldError::NoSuchField)?;
+    //     if let PromptField::I64 { .. } = self.fields[idx] {
+    //         Ok(self.buffers[idx].data.parse().unwrap()) // Likewise
+    //     } else {
+    //         Err(FieldError::WrongType)
+    //     }
+    // }
 }
 
 pub enum PromptField {
@@ -302,10 +319,10 @@ pub enum PromptField {
         name: &'static str,
         default: Option<u16>,
     },
-    I64 {
-        name: &'static str,
-        default: Option<i64>,
-    },
+    // I64 {
+    //     name: &'static str,
+    //     default: Option<i64>,
+    // },
 }
 
 impl PromptField {
@@ -314,13 +331,13 @@ impl PromptField {
         match self {
             Self::String { default: Some(d), .. } => d.clone(),
             Self::U16 { default: Some(d), .. } => d.to_string(),
-            Self::I64 { default: Some(d), .. } => d.to_string(),
+            // Self::I64 { default: Some(d), .. } => d.to_string(),
             _ => "".to_owned(),
         }
     }
     fn name(&self) -> &str {
         match self {
-            Self::String { name, .. } | Self::U16 { name, .. } | Self::I64 { name, .. } => name,
+            Self::String { name, .. } | Self::U16 { name, .. } /* | Self::I64 { name, .. } */ => name,
         }
     }
 }
