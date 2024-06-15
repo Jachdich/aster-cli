@@ -152,6 +152,49 @@ pub enum Identification {
     Uuid(i64),
 }
 
+impl OnlineServer {
+    pub async fn initialise(
+        &mut self,
+        id: Identification,
+    ) -> std::result::Result<(), std::io::Error> {
+        use Request::*;
+        match id {
+            Identification::Uuid(uuid) => {
+                self.write_half
+                    .write_request(LoginRequest {
+                        passwd: "a".into(),
+                        uname: None,
+                        uuid: Some(uuid),
+                    })
+                    .await?;
+                self.write_half
+                    .write_request(GetUserRequest { uuid })
+                    .await?; // just make certain we get our own name
+                Ok(())
+            }
+            Identification::Username(username) => {
+                self.write_half
+                    .write_request(LoginRequest {
+                        passwd: "a".into(),
+                        uname: Some(username.clone()),
+                        uuid: None,
+                    })
+                    .await?;
+                Ok(())
+            }
+        }
+    }
+    async fn post_init(&mut self) -> Result<(), std::io::Error> {
+        use Request::*;
+        self.write_half.write_request(GetIconRequest).await?;
+        self.write_half.write_request(GetNameRequest).await?;
+        self.write_half.write_request(GetMetadataRequest).await?;
+        self.write_half.write_request(ListChannelsRequest).await?;
+        self.write_half.write_request(OnlineRequest).await?;
+        Ok(())
+    }
+}
+
 impl Server {
     pub async fn new(
         ip: String,
@@ -159,7 +202,7 @@ impl Server {
         tx: Sender<LocalMessage>,
         mut cancel: Receiver<()>,
     ) -> Self {
-        match TcpStream::connect((ip.as_str(), port)).await {
+        let network = match TcpStream::connect((ip.as_str(), port)).await {
             Ok(socket) => {
                 let addr = socket.peer_addr().unwrap(); // TODO figure out if this unwrap is ever gonna cause a problem
 
@@ -178,28 +221,25 @@ impl Server {
                         _ = cancel.recv() => {}, // we need to shut down the connection rn
                     }
                 });
-                Self::Online {
+                Ok(OnlineServer {
                     loaded_messages: Vec::new(),
                     channels: Vec::new(),
                     curr_channel: None,
                     peers: HashMap::new(),
                     write_half,
                     remote_addr: addr,
-                    ip,
-                    port,
-                    name: None,
-                    uuid: None,
-                    uname: None,
-                }
+                })
             }
-            Err(e) => Self::Offline {
-                offline_reason: format!("Failed to connect: {:?}", e),
-                ip,
-                port,
-                name: None,
-                uuid: None,
-                uname: None,
-            },
+            Err(e) => Err(format!("Failed to connect: {:?}", e)),
+        };
+
+        Self {
+            ip,
+            port,
+            name: None,
+            uuid: None,
+            uname: None,
+            network,
         }
     }
 
@@ -233,44 +273,6 @@ impl Server {
     //     self.write(Request::PfpRequest { data: meta.pfp }).await?;
     //     Ok(())
     // }
-
-    pub async fn initialise(
-        &mut self,
-        id: Identification,
-    ) -> std::result::Result<(), std::io::Error> {
-        use Request::*;
-        match self {
-            Self::Online { write_half, .. } => match id {
-                Identification::Uuid(uuid) => {
-                    write_half
-                        .write_request(LoginRequest {
-                            passwd: "a".into(),
-                            uname: None,
-                            uuid: Some(uuid),
-                        })
-                        .await?;
-                    write_half.write_request(GetUserRequest { uuid }).await?; // just make certain we get our own name
-                    self.set_uuid(uuid); // technically this should be before, but rust complains. should be fine.
-                    Ok(())
-                }
-                Identification::Username(username) => {
-                    write_half
-                        .write_request(LoginRequest {
-                            passwd: "a".into(),
-                            uname: Some(username.clone()),
-                            uuid: None,
-                        })
-                        .await?;
-                    self.set_uname(username);
-                    Ok(())
-                }
-            },
-            Self::Offline { .. } => Err(std::io::Error::new(
-                std::io::ErrorKind::NotConnected,
-                "Cannot initialise offline server!",
-            )),
-        }
-    }
 
     async fn run_network(
         tx: std::sync::mpsc::Sender<LocalMessage>,
@@ -317,116 +319,92 @@ impl Server {
         FmtString::concat(pfp, formatted)
     }
 
-    async fn post_init(&mut self) -> Result<(), std::io::Error> {
-        use Request::*;
-        match self {
-            Self::Online { write_half, .. } => {
-                write_half.write_request(GetIconRequest).await?;
-                write_half.write_request(GetNameRequest).await?;
-                write_half.write_request(GetMetadataRequest).await?;
-                write_half.write_request(ListChannelsRequest).await?;
-                write_half.write_request(OnlineRequest).await?;
-                Ok(())
-            }
-            Self::Offline { .. } => Err(std::io::Error::new(
-                std::io::ErrorKind::NotConnected,
-                "Cannot initialise offline server!",
-            )),
-        }
-    }
-
     pub async fn handle_network_packet(&mut self, response: Response) -> Result<(), String> {
-        if let Self::Online {
-            peers,
-            uuid,
-            name,
-            loaded_messages,
-            channels,
-            uname,
-            write_half,
-            ..
-        } = self
-        {
-            use api::Status;
-            use Response::*;
-            match response {
-                GetMetadataResponse { data, .. } => {
-                    for elem in data.unwrap() {
-                        let peer_uuid = elem.uuid;
-                        let peer = Peer::from_user(elem);
-                        if uuid.is_some_and(|uuid| uuid == peer_uuid) {
-                            // info about ourselves that we may not know yet!
-                            if uname.is_none() {
-                                *uname = Some(peer.name.clone());
-                            }
+        use api::Status::{self, *};
+        use Response::*;
+        let net = self
+            .network
+            .as_mut()
+            .expect("Network packet recv'd for offline server??");
+        match response {
+            GetMetadataResponse { data, .. } => {
+                for elem in data.unwrap() {
+                    let peer_uuid = elem.uuid;
+                    let peer = Peer::from_user(elem);
+                    if self.uuid.is_some_and(|uuid| uuid == peer_uuid) {
+                        // info about ourselves that we may not know yet!
+                        if self.uname.is_none() {
+                            self.uname = Some(peer.name.clone());
                         }
-                        peers.insert(peer_uuid, peer);
                     }
+                    net.peers.insert(peer_uuid, peer);
                 }
-                RegisterResponse { uuid: new_uuid, .. } => *uuid = Some(new_uuid.unwrap()),
-                LoginResponse {
-                    uuid: Some(new_uuid),
-                    status: Status::Ok,
-                } => {
-                    *uuid = Some(new_uuid);
-                    self.post_init().await.unwrap(); // TODO get rid of this unwrap
-                }
-                LoginResponse {
-                    status: Status::NotFound,
-                    ..
-                } => {
-                    // Try register instead
-                    let uname = uname
-                        .as_ref()
-                        .ok_or("No username to register with!".to_owned())?
-                        .to_owned();
-                    write_half
-                        .write_request(Request::RegisterRequest {
-                            passwd: "a".into(),
-                            uname,
-                        })
-                        .await
-                        .unwrap(); // TODO get rid of this
-                }
-                LoginResponse {
-                    status: Status::Forbidden,
-                    ..
-                } => {
+            }
+            RegisterResponse { uuid: new_uuid, .. } => self.uuid = Some(new_uuid.unwrap()),
+            LoginResponse {
+                uuid: Some(new_uuid),
+                status: Ok,
+            } => {
+                self.uuid = Some(new_uuid);
+                net.post_init().await.unwrap(); // TODO get rid of this unwrap
+            }
+            LoginResponse {
+                status: NotFound, ..
+            } => {
+                // Try register instead
+                let uname = self
+                    .uname
+                    .as_ref()
+                    .ok_or("No username to register with!".to_owned())?
+                    .to_owned();
+                net.write_half
+                    .write_request(Request::RegisterRequest {
+                        passwd: "a".into(),
+                        uname,
+                    })
+                    .await
+                    .unwrap(); // TODO get rid of this
+            }
+            LoginResponse {
+                status: Forbidden, ..
+            } => {
+                return Err(format!(
+                    "Invalid password for {}@{}:{}",
+                    self.uname.as_ref().map(|s| s.as_str()).unwrap_or(
+                        self.uuid
+                            .map(|uuid| format!("{}", uuid))
+                            .unwrap_or("{unknown}".to_owned()) // this should never happen, but just in case
+                            .as_str()
+                    ),
+                    self.ip,
+                    self.port
+                ));
+            }
+            GetNameResponse { data, status: Ok } => self.name = Some(data.unwrap()),
+            ListChannelsResponse { data, status: Ok } => net.channels = data.unwrap(),
+            HistoryResponse { data, status: Ok } => {
+                let new_msgs = data
+                    .unwrap()
+                    .into_iter()
+                    .map(|message| Self::format_message(&message, &net.peers))
+                    .collect::<Vec<_>>(); // TODO get rid of this collect: borrow checker complains, tho
+                net.loaded_messages.extend(new_msgs);
+            }
+            ContentResponse { message, .. } => net
+                .loaded_messages
+                .push(Self::format_message(&message, &net.peers)),
+            _ => {
+                if response.status() != Status::Ok {
                     return Err(format!(
-                        "Invalid password for {}@{}:{}",
-                        self.uname().unwrap_or(
-                            self.uuid()
-                                .map(|uuid| format!("{}", uuid))
-                                .unwrap_or("{unknown}".to_owned()) // this should never happen, but just in case
-                                .as_str()
-                        ),
-                        self.ip(),
-                        self.port()
+                        "Non-OK status from {}:{}: {}: {}",
+                        self.ip,
+                        self.port,
+                        response.name(),
+                        response.status(),
                     ));
                 }
-                GetNameResponse { data, .. } => *name = Some(data.unwrap()),
-                ListChannelsResponse { data, .. } => *channels = data.unwrap(),
-                HistoryResponse { data, .. } => loaded_messages.extend(
-                    data.unwrap()
-                        .into_iter()
-                        .map(|message| Self::format_message(&message, peers)),
-                ),
-                ContentResponse { message, .. } => {
-                    loaded_messages.push(Self::format_message(&message, peers))
-                }
-                _ => {
-                    if response.status() != Status::Ok {
-                        return Err(format!(
-                            "Non-OK status from {}:{}: {}: {}",
-                            self.ip(),
-                            self.port(),
-                            response.name(),
-                            response.status(),
-                        ));
-                    }
-                }
             }
         }
-        Ok(())
+        Result::Ok(())
     }
 }

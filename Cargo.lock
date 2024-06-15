@@ -108,7 +108,7 @@ dependencies = [
  "base64",
  "dct-tiv",
  "dirs",
- "fmtstring",
+ "fmtstring 0.1.0",
  "futures",
  "image",
  "native-tls",
@@ -190,7 +190,7 @@ checksum = "7a81dae078cea95a014a339291cec439d2f232ebe854a9d672b796c6afafa9b7"
 name = "dct-tiv"
 version = "0.1.0"
 dependencies = [
- "fmtstring",
+ "fmtstring 0.1.0 (git+https://github.com/Jachdich/fmtstring.git)",
  "image",
  "oklab",
  "prisma",
@@ -301,6 +301,15 @@ dependencies = [
 [[package]]
 name = "fmtstring"
 version = "0.1.0"
+dependencies = [
+ "oklab",
+ "termion 1.5.6",
+]
+
+[[package]]
+name = "fmtstring"
+version = "0.1.0"
+source = "git+https://github.com/Jachdich/fmtstring.git#7b0f16425d391526763e67779d496e33992a79ad"
 dependencies = [
  "oklab",
  "termion 1.5.6",

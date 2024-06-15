@@ -70,23 +70,17 @@ async fn init_server_from_json(
             return None;
         };
 
-        match conn.initialise(id).await {
+        match conn.network.as_mut().unwrap().initialise(id).await {
             Ok(()) => (),
-            Err(e) => conn = conn.to_offline(e.to_string()),
+            Err(e) => conn.to_offline(e.to_string()),
         }
     }
 
     if !conn.is_online() {
         // preserve the info we know, if any, from the json file
-        if let Some(uname) = serv["uname"].as_str() {
-            conn.set_uname(uname.to_owned());
-        }
-        if let Some(name) = serv["name"].as_str() {
-            conn.set_name(name.to_owned());
-        }
-        if let Some(uuid) = serv["uuid"].as_i64() {
-            conn.set_uuid(uuid);
-        }
+        conn.uname = serv["uname"].as_str().map(|s| s.to_owned());
+        conn.name = serv["name"].as_str().map(|s| s.to_owned());
+        conn.uuid = serv["uuid"].as_i64();
     }
     Some(conn)
 }
@@ -304,8 +298,8 @@ impl GUI {
 
     pub async fn connect_to_server(&mut self, ip: String, port: u16, id: Identification) {
         let mut conn = Server::new(ip, port, self.tx.clone(), self.cancel.subscribe()).await;
-        if conn.is_online() {
-            conn.initialise(id).await.unwrap();
+        if let Ok(ref mut net) = conn.network {
+            net.initialise(id).await.unwrap();
         }
         self.servers.push(conn);
     }
@@ -320,9 +314,9 @@ impl GUI {
     }
 
     fn get_server_by_addr(&mut self, addr: SocketAddr) -> Option<&mut Server> {
-        self.servers.iter_mut().find(|server| match server {
-            Server::Online { remote_addr, .. } => *remote_addr == addr,
-            Server::Offline { .. } => false,
+        self.servers.iter_mut().find(|server| match server.network {
+            Ok(net) => net.remote_addr == addr,
+            Err(_) => false,
         })
     }
 
