@@ -1,3 +1,5 @@
+use core::net;
+
 use super::Focus;
 use super::Mode;
 use crate::api;
@@ -5,60 +7,61 @@ use crate::gui::GUI;
 use crate::prompt::EditBuffer;
 use crate::prompt::PromptEvent;
 use crate::server::Identification;
+use crate::server::OnlineServer;
 use crate::server::Server;
 use crate::server::WriteAsterRequest;
 use termion::event::{Event, Key, MouseButton, MouseEvent};
 
 impl GUI {
-    async fn focus_edit_event(&mut self, event: Event) {
-        match event {
-            Event::Key(Key::Char('\n')) => {
-                if self.buffer.data.len() == 0 {
-                    return;
-                }
+    async fn send_message_to_server(&mut self, server: usize, channel: usize) {
+        let uuid = net.channels[ch].uuid;
+        let content = self.buffer.data.clone();
+        let res = net
+            .write_half
+            .write_request(crate::api::Request::SendRequest {
+                content,
+                channel: uuid,
+            })
+            .await;
+        match res {
+            Ok(_) => {
+                self.buffer = EditBuffer::new("".to_string());
+            }
+            Err(error) => {
+                self.send_system(error.to_string().as_str());
+            }
+        }
+    }
 
-                if self.buffer.data.chars().nth(0).unwrap() == '/' {
-                    if let Err(e) = self.handle_send_command(self.buffer.data.clone()).await {
-                        self.send_system(e.0.as_str());
-                    }
-                    self.buffer = EditBuffer::new("".to_string());
-                } else if let Some(curr_server) = self.curr_server {
-                    let curr_channel_uuid = if let Server::Online {
-                        channels,
-                        curr_channel: Some(curr_channel),
-                        ..
-                    } = &self.servers[curr_server]
-                    {
-                        channels[*curr_channel].uuid
-                    } else {
-                        self.send_system("Cannot send anything to a nonexistant server!");
-                        //TODO fix this!!!
-                        return;
-                    };
+    async fn handle_send_message(&mut self) {
+        if self.buffer.data.len() == 0 {
+            return;
+        }
 
-                    if let Server::Online { write_half, .. } = &mut self.servers[curr_server] {
-                        let res = write_half
-                            .write_request(crate::api::Request::SendRequest {
-                                content: self.buffer.data.clone(),
-                                channel: curr_channel_uuid,
-                            })
-                            .await;
-                        match res {
-                            Ok(_) => {
-                                self.buffer = EditBuffer::new("".to_string());
-                            }
-                            Err(error) => {
-                                self.send_system(error.to_string().as_str());
-                            }
-                        }
-                    } else {
-                        self.send_system("Cannot send anything to an offline server!");
-                    }
-                } else {
-                    self.send_system("No server is selected you silly goose!");
-                }
+        if self.buffer.data.chars().nth(0).unwrap() == '/' {
+            if let Err(e) = self.handle_send_command(self.buffer.data.clone()).await {
+                self.send_system(e.0.as_str());
+            }
+            self.buffer = EditBuffer::new("".to_string());
+        } else if let Some(curr_server) = self.curr_server {
+            if !self.servers[curr_server].is_online() {
+                self.send_system("The server is offline!");
+                return;
             }
 
+            if let Some(ch) = self.servers[curr_server].network.as_ref().unwrap().curr_channel {
+                self.send_message_to_server(curr_server, ch);
+            } else {
+                self.send_system("No channel is selected you silly goose!");
+            }
+        } else {
+            self.send_system("No server is selected you silly goose!");
+        }
+    }
+
+    async fn focus_edit_event(&mut self, event: Event) {
+        match event {
+            Event::Key(Key::Char('\n')) => self.handle_send_message().await,
             Event::Key(Key::Char(ch)) => self.buffer.push(ch),
             Event::Key(Key::Backspace) => self.buffer.pop(),
             Event::Key(Key::Left) => self.buffer.left(),
@@ -84,13 +87,8 @@ impl GUI {
                     else {
                         return ();
                     };
-                    let reload = if let Server::Online {
-                        channels,
-                        curr_channel,
-                        ..
-                    } = curr_server
-                    {
-                        idx < channels.len() && !curr_channel.is_some_and(|c| c == idx)
+                    let reload = if let Ok(ref net) = curr_server.network {
+                        idx < net.channels.len() && !net.curr_channel.is_some_and(|c| c == idx)
                     } else {
                         false
                     };
@@ -127,18 +125,11 @@ impl GUI {
             return;
         };
         let s = &mut self.servers[curr_server];
-        if let Server::Online {
-            curr_channel,
-            channels,
-            loaded_messages,
-            write_half,
-            ..
-        } = s
-        {
+        if let Ok(ref mut net) = s.network {
             let reload = match event {
                 Event::Key(Key::Up) => {
-                    if curr_channel.is_some_and(|x| x > 0) {
-                        *curr_channel.as_mut().unwrap() -= 1;
+                    if net.curr_channel.is_some_and(|x| x > 0) {
+                        *net.curr_channel.as_mut().unwrap() -= 1;
                         true
                     } else {
                         false
@@ -146,11 +137,11 @@ impl GUI {
                 }
 
                 Event::Key(Key::Down) => {
-                    if curr_channel.is_some_and(|x| x < channels.len() - 1) {
-                        *curr_channel.as_mut().unwrap() += 1;
+                    if net.curr_channel.is_some_and(|x| x < net.channels.len() - 1) {
+                        *net.curr_channel.as_mut().unwrap() += 1;
                         true
-                    } else if curr_channel.is_none() && channels.len() > 0 {
-                        *curr_channel = Some(0);
+                    } else if net.curr_channel.is_none() && net.channels.len() > 0 {
+                        net.curr_channel = Some(0);
                         true
                     } else {
                         false
@@ -160,9 +151,10 @@ impl GUI {
             };
 
             if reload {
-                loaded_messages.clear();
-                let channel = channels[curr_channel.unwrap()].uuid;
-                let res = write_half
+                net.loaded_messages.clear();
+                let channel = net.channels[net.curr_channel.unwrap()].uuid;
+                let res = net
+                    .write_half
                     .write_request(api::Request::HistoryRequest {
                         num: 100,
                         channel,

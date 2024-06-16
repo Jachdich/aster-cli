@@ -21,12 +21,6 @@ serde_json = "1.0"
 serde_repr = "0.1.19"
 base64 = "*"
 image = "*"
-dct-tiv = { path = "../../dct-tiv" }
-fmtstring = { path = "../../fmtstring" }
-# TEMP
-rand = "*"
-
-
-[profile.release]
-debug = true
+dct-tiv = { git = "https://github.com/Jachdich/dct-tiv" }
+fmtstring = { git = "https://github.com/Jachdich/fmtstring" }
 

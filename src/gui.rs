@@ -159,6 +159,13 @@ impl GUI {
         }
     }
 
+    pub fn curr_server(&self) -> Option<&Server> {
+        self.curr_server.map(|s| self.servers[s]).as_ref()
+    }
+    pub fn curr_server_mut(&mut self) -> Option<&mut Server> {
+        self.curr_server.map(|s| self.servers[s]).as_mut()
+    }
+
     pub fn send_system(&mut self, message: &str) {
         self.system_message = format!("System: {}", message).into();
         self.draw_status_line();
