@@ -1,5 +1,4 @@
 use crate::gui::GUI;
-use crate::server::Server;
 use crate::Mode;
 use fmtstring::{Colour, FmtChar, FmtString};
 use std::fmt;
@@ -284,20 +283,15 @@ impl GUI {
         let mut vert_pos = self.theme.get_servers_start_pos() as u16;
         let mut idx = 0;
         if let Some(curr_server) = self.curr_server {
-            if let Server::Online {
-                channels,
-                curr_channel,
-                ..
-            } = &self.servers[curr_server]
-            {
-                for channel in channels {
+            if let Ok(ref net) = &self.servers[curr_server].network {
+                for channel in &net.channels {
                     write!(
                         self.screen,
                         "{}{}{}{}{}{}{}{}",
                         termion::cursor::Goto(1 + self.theme.servers.border.left.width(), vert_pos),
                         termion::color::Fg(termion::color::Reset),
                         termion::color::Bg(termion::color::Reset),
-                        if curr_channel.is_some_and(|cc| idx == cc) {
+                        if net.curr_channel.is_some_and(|cc| idx == cc) {
                             self.theme.servers.selected_text.clone()
                         } else {
                             self.theme.servers.text.clone()
@@ -314,6 +308,7 @@ impl GUI {
                 }
             }
         }
+
         while vert_pos < self.theme.get_channels_start_pos(height) as u16 {
             write!(
                 self.screen,
@@ -328,8 +323,8 @@ impl GUI {
         // vert_pos = self.theme.get_channels_start_pos(height) as u16 + 1;
         idx = 0;
         for server in &self.servers {
-            let backup_name = format!("<{}:{}>", server.ip(), server.port());
-            let display_name = server.name().unwrap_or(backup_name.as_str());
+            let backup_name = format!("<{}:{}>", server.ip, server.port);
+            let display_name = server.name.as_ref().unwrap_or(&backup_name);
             write!(
                 self.screen,
                 "{}{}{}{}{}{}{}{}",
@@ -338,7 +333,7 @@ impl GUI {
                 termion::color::Bg(termion::color::Reset),
                 if Some(idx) == self.curr_server {
                     self.theme.servers.selected_text.clone()
-                } else if let Server::Offline { .. } = server {
+                } else if !server.is_online() {
                     self.theme.servers.error_text.clone()
                 } else {
                     self.theme.servers.text.clone()
@@ -357,12 +352,11 @@ impl GUI {
     pub fn draw_messages(&mut self, input_lines: u16) {
         let nothing = Vec::new();
         let messages = if let Some(curr_server) = self.curr_server {
-            match &self.servers[curr_server] {
-                Server::Online {
-                    loaded_messages, ..
-                } => loaded_messages,
-                _ => &nothing,
-            }
+            self.servers[curr_server]
+                .network
+                .as_ref()
+                .map(|net| &net.loaded_messages)
+                .unwrap_or(&nothing)
         } else {
             &nothing
         };
@@ -750,7 +744,7 @@ impl GUI {
                 )
                 .unwrap();
             }
-            Mode::NewServer => {
+            Mode::NewServer | Mode::Login => {
                 if self.servers.len() > 0 {
                     self.draw_servers();
                 }

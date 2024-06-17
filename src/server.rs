@@ -5,7 +5,6 @@ use crate::api::{self, Channel, Request, Response, User};
 use crate::tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 use crate::LocalMessage;
 use base64::prelude::*;
-use dct_tiv::Matrix;
 use fmtstring::FmtString;
 use serde::ser::{Serialize, SerializeStruct, Serializer};
 use std::collections::HashMap;
@@ -39,20 +38,6 @@ pub struct Peer {
     pub name: String,
     pub pfp: FmtString,
 }
-
-// aight fuck you, global mutable variables i dont care
-static mut CALIBRATION_MATRICES: Vec<Matrix<7, 16>> = Vec::new();
-static mut PALETTE: Vec<char> = Vec::new();
-
-pub fn init_calibration_matrices() {
-    // SAFETY
-    // This function is called once at the start of the program. A race condition should be impossible.
-    unsafe {
-        CALIBRATION_MATRICES = dct_tiv::create_calibration_matrices(true);
-        PALETTE = dct_tiv::get_palette();
-    }
-}
-
 impl Peer {
     fn from_user(user: User) -> Self {
         let pfp_bytes = BASE64_STANDARD.decode(user.pfp).unwrap();
@@ -62,7 +47,7 @@ impl Peer {
             .into_rgb8();
 
         // yea this requires unsafe, but it avoids a dependency, and is perfectly safe™ I think
-        let pfp = unsafe { dct_tiv::textify_dct(&img, &CALIBRATION_MATRICES, &PALETTE) }
+        let pfp = dct_tiv::textify_dct(&img, &dct_tiv::DEFAULT_DCT_MATRICIES, &dct_tiv::DEFAULT_PALETTE)
             .into_iter()
             .next()
             .unwrap();
@@ -73,30 +58,6 @@ impl Peer {
         }
     }
 }
-
-// pub enum Server {
-//     Online {
-//         loaded_messages: Vec<FmtString>,
-//         channels: Vec<Channel>,
-//         curr_channel: Option<usize>,
-//         peers: HashMap<i64, Peer>,
-//         write_half: WriteHalf<SocketStream>,
-//         remote_addr: SocketAddr,
-//         ip: String,
-//         port: u16,
-//         name: Option<String>,
-//         uuid: Option<i64>,
-//         uname: Option<String>,
-//     },
-//     Offline {
-//         offline_reason: String,
-//         ip: String,
-//         port: u16,
-//         name: Option<String>,
-//         uuid: Option<i64>,
-//         uname: Option<String>,
-//     },
-// }
 
 pub struct OnlineServer {
     pub loaded_messages: Vec<FmtString>,
@@ -127,25 +88,6 @@ impl Serialize for Server {
         state.end()
     }
 }
-
-// #[rustfmt::skip]
-// #[allow(dead_code)] // because some methods might not be used yet but are included for completeness
-// impl Server {
-//     pub fn name(&self) -> Option<&str> {
-//         match self { Self::Online { name, .. } | Self::Offline { name, .. } => name.as_ref().map(|x| x.as_str()) }
-//     }
-//     pub fn uname(&self) -> Option<&str> {
-//         match self { Self::Online { uname, .. } | Self::Offline { uname, .. } => uname.as_ref().map(|x| x.as_str()) }
-//     }
-//     pub fn ip(&self) -> &str { match self { Self::Online { ip, .. } | Self::Offline { ip, .. } => &ip }}
-//     pub fn port(&self) -> u16 { match self { Self::Online { port, .. } | Self::Offline { port, .. } => *port }}
-//     pub fn uuid(&self) -> Option<i64> { match self { Self::Online { uuid, .. } | Self::Offline { uuid, .. } => *uuid }}
-//     pub fn set_ip(&mut self, v: String)    { match self { Self::Online { ip, .. }    | Self::Offline { ip, .. }    => *ip = v }}
-//     pub fn set_port(&mut self, v: u16)     { match self { Self::Online { port, .. }  | Self::Offline { port, .. }  => *port = v }}
-//     pub fn set_uuid(&mut self, v: i64)     { match self { Self::Online { uuid, .. }  | Self::Offline { uuid, .. }  => *uuid = Some(v) }}
-//     pub fn set_name(&mut self, v: String)  { match self { Self::Online { name, .. }  | Self::Offline { name, .. }  => *name = Some(v) }}
-//     pub fn set_uname(&mut self, v: String) { match self { Self::Online { uname, .. } | Self::Offline { uname, .. } => *uname = Some(v) }}
-// }
 
 pub enum Identification {
     Username(String),
@@ -192,6 +134,9 @@ impl OnlineServer {
         self.write_half.write_request(ListChannelsRequest).await?;
         self.write_half.write_request(OnlineRequest).await?;
         Ok(())
+    }
+    pub async fn write(&mut self, request: Request) -> Result<usize, std::io::Error> {
+        self.write_half.write_request(request).await
     }
 }
 

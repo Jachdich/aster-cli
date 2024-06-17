@@ -21,6 +21,7 @@ use gui::GUI;
 #[derive(Clone, Copy, PartialEq)]
 pub enum Mode {
     NewServer,
+    Login,
     Messages,
     Settings,
 }
@@ -57,7 +58,6 @@ fn process_input(tx: std::sync::mpsc::Sender<LocalMessage>) {
 
 #[tokio::main]
 async fn main() {
-    server::init_calibration_matrices();
     let (tx, rx): (
         std::sync::mpsc::Sender<LocalMessage>,
         std::sync::mpsc::Receiver<LocalMessage>,

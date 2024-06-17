@@ -1,5 +1,3 @@
-use core::net;
-
 use super::Focus;
 use super::Mode;
 use crate::api;
@@ -7,13 +5,22 @@ use crate::gui::GUI;
 use crate::prompt::EditBuffer;
 use crate::prompt::PromptEvent;
 use crate::server::Identification;
-use crate::server::OnlineServer;
-use crate::server::Server;
 use crate::server::WriteAsterRequest;
 use termion::event::{Event, Key, MouseButton, MouseEvent};
 
 impl GUI {
-    async fn send_message_to_server(&mut self, server: usize, channel: usize) {
+    async fn send_message_to_server(&mut self, server: usize) {
+        let Ok(ref mut net) = self.servers[server].network else {
+            self.send_system("This server is offline!");
+            return;
+        };
+
+        let Some(ch) = net.curr_channel else {
+            self.send_system("No channel is selected you silly goose!");
+            return;
+        };
+
+
         let uuid = net.channels[ch].uuid;
         let content = self.buffer.data.clone();
         let res = net
@@ -23,6 +30,7 @@ impl GUI {
                 channel: uuid,
             })
             .await;
+
         match res {
             Ok(_) => {
                 self.buffer = EditBuffer::new("".to_string());
@@ -44,16 +52,7 @@ impl GUI {
             }
             self.buffer = EditBuffer::new("".to_string());
         } else if let Some(curr_server) = self.curr_server {
-            if !self.servers[curr_server].is_online() {
-                self.send_system("The server is offline!");
-                return;
-            }
-
-            if let Some(ch) = self.servers[curr_server].network.as_ref().unwrap().curr_channel {
-                self.send_message_to_server(curr_server, ch);
-            } else {
-                self.send_system("No channel is selected you silly goose!");
-            }
+            self.send_message_to_server(curr_server).await;
         } else {
             self.send_system("No server is selected you silly goose!");
         }
@@ -217,6 +216,15 @@ impl GUI {
                     self.prompt = None;
                 }
                 Some(PromptEvent::ButtonPressed(_)) => unreachable!(), // no idea
+                None => (),
+            }
+        } else if self.mode == Mode::Login {
+            let p = self.prompt.as_mut().unwrap();
+            match p.handle_event(key) {
+                Some(PromptEvent::ButtonPressed("Login")) => todo!(),
+                Some(PromptEvent::ButtonPressed("Register")) => todo!(),
+                Some(PromptEvent::ButtonPressed("Quit")) => return false,
+                Some(PromptEvent::ButtonPressed(_)) => unreachable!(),
                 None => (),
             }
         }
