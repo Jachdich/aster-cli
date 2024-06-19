@@ -218,15 +218,6 @@ impl GUI {
                 Some(PromptEvent::ButtonPressed(_)) => unreachable!(), // no idea
                 None => (),
             }
-        } else if self.mode == Mode::Login {
-            let p = self.prompt.as_mut().unwrap();
-            match p.handle_event(key) {
-                Some(PromptEvent::ButtonPressed("Login")) => todo!(),
-                Some(PromptEvent::ButtonPressed("Register")) => todo!(),
-                Some(PromptEvent::ButtonPressed("Quit")) => return false,
-                Some(PromptEvent::ButtonPressed(_)) => unreachable!(),
-                None => (),
-            }
         }
         true
     }

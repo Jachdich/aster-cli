@@ -276,7 +276,7 @@ fn border_rep(c: &OptionalFmtChar, n: usize) -> String {
 }
 
 impl GUI {
-    pub fn draw_servers(&mut self) {
+    pub fn draw_servers<W: Write>(&self, screen: &mut W) {
         let (_width, height) = termion::terminal_size().unwrap();
         let height = height - 1;
 
@@ -286,7 +286,7 @@ impl GUI {
             if let Ok(ref net) = &self.servers[curr_server].network {
                 for channel in &net.channels {
                     write!(
-                        self.screen,
+                        screen,
                         "{}{}{}{}{}{}{}{}",
                         termion::cursor::Goto(1 + self.theme.servers.border.left.width(), vert_pos),
                         termion::color::Fg(termion::color::Reset),
@@ -311,7 +311,7 @@ impl GUI {
 
         while vert_pos < self.theme.get_channels_start_pos(height) as u16 {
             write!(
-                self.screen,
+                screen,
                 "{}{}",
                 termion::cursor::Goto(1 + self.theme.servers.border.left.width(), vert_pos),
                 " ".repeat(self.theme.left_margin),
@@ -326,7 +326,7 @@ impl GUI {
             let backup_name = format!("<{}:{}>", server.ip, server.port);
             let display_name = server.name.as_ref().unwrap_or(&backup_name);
             write!(
-                self.screen,
+                screen,
                 "{}{}{}{}{}{}{}{}",
                 termion::cursor::Goto(1 + self.theme.servers.border.left.width(), vert_pos),
                 termion::color::Fg(termion::color::Reset),
@@ -349,7 +349,7 @@ impl GUI {
         }
     }
 
-    pub fn draw_messages(&mut self, input_lines: u16) {
+    pub fn draw_messages<W: Write>(&mut self, screen: &mut W, input_lines: u16) {
         let nothing = Vec::new();
         let messages = if let Some(curr_server) = self.curr_server {
             self.servers[curr_server]
@@ -445,7 +445,7 @@ impl GUI {
             line -= 1;
         }
         write!(
-            self.screen,
+            screen,
             "{}{}{}",
             termion::color::Fg(termion::color::Reset),
             termion::color::Bg(termion::color::Reset),
@@ -454,181 +454,9 @@ impl GUI {
         .unwrap();
     }
 
-    pub fn draw_border(&mut self) {
-        if self.draw_border {
-            self.draw_border = false;
-            let (width, height) = termion::terminal_size().unwrap();
-            let height = height - 1;
-            let channels_height = self.theme.get_channels_height(height);
-            let servers_height = self.theme.get_servers_height(height);
-
-            let left_margin = self.theme.left_margin;
-
-            let total_border_width = (self.theme.servers.border.left.width()
-                + self.theme.servers.border.right.width()
-                + self.theme.messages.border.left.width()
-                + self.theme.messages.border.right.width())
-                as usize;
-            let space_padding = " ".repeat(width as usize - left_margin - total_border_width);
-            let rs = termion::color::Fg(termion::color::Reset).to_string()
-                + (&termion::color::Bg(termion::color::Reset).to_string());
-
-            self.border_buffer = format!("{0}{1}{sttl}{2}{3}\r\n{stleft}{4}{stright}{mleft}{space_padding}{mright}\r\n{stleft}{5}{stright}{mleft}{space_padding}{mright}\r\n{6}{7}{8}{9}{sbl}{10}{11}",
-    /*0*/       termion::cursor::Goto(1, 1),
-    /*1*/       "",
-    /*2*/       border_rep(&self.theme.status.border.top, left_margin),
-
-    /*3*/       if self.theme.messages.border.left.width() == 0 || self.theme.channels.border.right.width() == 0 {
-                    format!("{sttop_split}{}{mtr}", 
-                        border_rep(&self.theme.messages.border.top, width as usize - left_margin - total_border_width),
-
-                        mtr = self.theme.messages.border.tr,
-                        sttop_split = self.theme.status.border.top_split,
-                    )
-                } else {
-                    format!("{sttr}{mtl}{}{mtr}", 
-                        border_rep(&self.theme.messages.border.top, width as usize - left_margin - total_border_width),
-
-                        mtr = self.theme.messages.border.tr,
-                        mtl = self.theme.messages.border.tl,
-                        sttr = self.theme.status.border.tr,
-                    )
-                },
-
-    /*4*/       centred("Connected to", left_margin),
-
-    /*5*/       centred("cospox.com", self.theme.left_margin),
-
-    /*6*/       if self.theme.channels.border.bottom.width() > 0 {
-                    format!("{stleft_split}{}{stright_split}{mleft}{}{mright}\r\n",
-                        border_rep(&self.theme.channels.border.bottom, left_margin),
-                        space_padding,
-                        stleft_split = self.theme.status.border.left_split,
-                        stright_split = self.theme.status.border.right_split,
-                        mright = self.theme.messages.border.right,
-                        mleft = self.theme.messages.border.left,
-                    )
-                } else {
-                    "".to_string()
-                },
-
-    /*7*/       format!("{cleft}{rs}{}{cright}{rs}{mleft}{}{mright}\r\n",
-                    " ".repeat(left_margin),
-                    space_padding,
-                    rs = rs,
-                    cleft = self.theme.channels.border.left,
-                    cright = self.theme.channels.border.right,
-                    mright = self.theme.messages.border.right,
-                    mleft = self.theme.messages.border.left,
-                ).repeat(channels_height),
-
-    /*8*/       if self.theme.channels.border.bottom.width() > 0 && self.theme.servers.border.top.width() > 0 {
-                    format!("{cbl}{}{cbr}{mleft}{}{mright}\r\n{stl}{}{str}{mleft}{}{mright}\r\n",
-                        border_rep(&self.theme.channels.border.bottom, left_margin),
-                        space_padding,
-                        border_rep(&self.theme.servers.border.top, left_margin),
-                        space_padding,
-                        cbl = self.theme.channels.border.bl,
-                        cbr = self.theme.channels.border.br,
-                        str = self.theme.servers.border.tr,
-                        stl = self.theme.servers.border.tl,
-                        mright = self.theme.messages.border.right,
-                        mleft = self.theme.messages.border.left,
-                    )
-                } else if self.theme.channels.border.bottom.width() > 0 {
-                    format!("{cleft_split}{}{cright_split}{mleft}{}{mright}\r\n", 
-                        border_rep(&self.theme.channels.border.bottom, left_margin),
-                        space_padding,
-                        cleft_split = self.theme.channels.border.left_split,
-                        cright_split = self.theme.channels.border.right_split,
-                        mright = self.theme.messages.border.right,
-                        mleft = self.theme.messages.border.left,
-                    )
-                } else if self.theme.servers.border.top.width() > 0 {
-                    format!("{sleft_split}{}{sright_split}{mleft}{}{mright}\r\n", 
-                        border_rep(&self.theme.servers.border.top, left_margin),
-                        space_padding,
-                        sleft_split = self.theme.servers.border.left_split,
-                        sright_split = self.theme.servers.border.right_split,
-                        mright = self.theme.messages.border.right,
-                        mleft = self.theme.messages.border.left,
-                    )
-                } else {
-                    "".to_string()
-                },
-
-    /*9*/       format!("{sleft}{rs}{}{sright}{rs}{mleft}{}{mright}\r\n", 
-                    " ".repeat(self.theme.left_margin), 
-                    space_padding,
-                    rs = rs,
-                    sleft = self.theme.servers.border.left,
-                    sright = self.theme.servers.border.right,
-                    mright = self.theme.messages.border.right,
-                    mleft = self.theme.messages.border.left,
-                ).repeat(servers_height),
-
-    /*10*/      border_rep(&self.theme.servers.border.bottom, left_margin),
-
-    /*11*/      if self.theme.messages.border.left.width() == 0 || self.theme.servers.border.right.width() == 0 {
-                    format!("{sbottom_split}{}{mbr}", 
-                        border_rep(&self.theme.messages.border.bottom, width as usize - left_margin - total_border_width),
-
-                        mbr = self.theme.messages.border.br,
-                        sbottom_split = self.theme.servers.border.bottom_split,
-                    )
-                } else {
-                    format!("{sbr}{mbl}{}{mbr}", 
-                        border_rep(&self.theme.messages.border.bottom, width as usize - left_margin - total_border_width),
-
-                        mbr = self.theme.messages.border.br,
-                        mbl = self.theme.messages.border.bl,
-                        sbr = self.theme.servers.border.br,
-                    )
-                },
-
-                //stl = self.theme.servers.border.tl,
-                sttl = self.theme.status.border.tl,
-                sbl = self.theme.servers.border.bl,
-                //ctop_split = self.theme.channels.border.top_split,
-                //sleft = self.theme.servers.border.left,
-                //cleft = self.theme.channels.border.left,
-                stleft = self.theme.status.border.left,
-                //sright = self.theme.servers.border.right,
-                //sleft_split = self.theme.servers.border.left_split,
-                //sright_split = self.theme.servers.border.right_split,
-                //sbottom_split = self.theme.servers.border.bottom_split,
-                mright = self.theme.messages.border.right,
-                //cright = self.theme.channels.border.right,
-                stright = self.theme.status.border.right,
-                mleft = self.theme.messages.border.left,
-                //mbr = self.theme.messages.border.br,
-                //mtr = self.theme.messages.border.tr,
-
-            );
-        }
-        write!(self.screen, "{}", self.border_buffer).unwrap();
-    }
-
-    pub fn update_term_size(&mut self) {
-        let (width, height) = termion::terminal_size().unwrap();
-
-        if width < 32 || height < 8 {
-            write!(self.screen, "Terminal size is too small lol").unwrap();
-            return;
-        }
-
-        if self.width != width || self.height != height {
-            self.draw_border = true; // actually redraw, don't use cached
-            self.draw_border();
-        }
-
-        self.width = width;
-        self.height = height;
-    }
-
-    pub fn draw_status_line(&mut self) {
+    pub fn draw_status_line<W: Write>(&self, screen: &mut W) {
         write!(
-            self.screen,
+            screen,
             "{}{}{}",
             termion::cursor::Goto(1, self.height),
             termion::clear::CurrentLine,
@@ -637,7 +465,7 @@ impl GUI {
         .unwrap();
     }
 
-    pub fn draw_input_buffer(&mut self) -> (u16, u16) {
+    pub fn draw_input_buffer<W: Write>(&self, screen: &mut W) -> (u16, u16) {
         let begin_x = self.theme.left_margin as u16
             + self.theme.servers.border.left.width()
             + self.theme.servers.border.right.width()
@@ -662,7 +490,7 @@ impl GUI {
             }
             let line = &self.buffer.data[pos..pos + len];
             write!(
-                self.screen,
+                screen,
                 "{}{}",
                 termion::cursor::Goto(begin_x, self.height - 1 - num_lines + curr_line),
                 line
@@ -673,7 +501,7 @@ impl GUI {
             let curr_line_len = line.len();
             if curr_line_len < max_drawing_width as usize {
                 write!(
-                    self.screen,
+                    screen,
                     "{}",
                     " ".repeat(max_drawing_width as usize - curr_line_len)
                 )
@@ -689,7 +517,7 @@ impl GUI {
         // previous line clearing thingie
         if curr_line < num_lines {
             write!(
-                self.screen,
+                screen,
                 "{}{}",
                 termion::cursor::Goto(begin_x, self.height - 2),
                 " ".repeat(max_drawing_width as usize)
@@ -699,39 +527,31 @@ impl GUI {
         (num_lines, max_drawing_width)
     }
 
-    pub fn draw_prompt(&mut self) {
+    pub fn draw_prompt<W: Write>(&self, screen: &mut W) {
         let y = self.height - self.prompt.as_ref().unwrap().height() - 1;
         self.prompt.as_ref().unwrap().draw(
-            &mut self.screen,
+            screen,
             self.theme.left_margin as u16 + 4,
             y,
             &self.theme,
         );
     }
 
-    pub fn draw_all(&mut self) {
-        self.update_term_size();
-        write!(
-            self.screen,
-            "{}{}{}",
-            termion::cursor::Goto(1, self.height),
-            termion::clear::CurrentLine,
-            self.system_message.to_optimised_string()
-        )
-        .unwrap();
+    pub fn draw_all<W: Write>(&mut self, screen: &mut W) {
+        self.draw_status_line(screen);
 
         match self.mode {
             Mode::Messages => {
-                let (num_input_lines, max_drawing_width) = self.draw_input_buffer();
+                let (num_input_lines, max_drawing_width) = self.draw_input_buffer(screen);
                 if self.servers.len() > 0 {
-                    self.draw_messages(num_input_lines);
-                    self.draw_servers();
+                    self.draw_messages(screen, num_input_lines);
+                    self.draw_servers(screen);
                 }
                 let cursor_x_pos = self.buffer.edit_position % max_drawing_width as usize;
                 let cursor_y_pos = self.buffer.edit_position / max_drawing_width as usize;
 
                 write!(
-                    self.screen,
+                    screen,
                     "{}",
                     termion::cursor::Goto(
                         self.theme.left_margin as u16
@@ -744,13 +564,163 @@ impl GUI {
                 )
                 .unwrap();
             }
-            Mode::NewServer | Mode::Login => {
+            Mode::NewServer => {
                 if self.servers.len() > 0 {
-                    self.draw_servers();
+                    self.draw_servers(screen);
                 }
-                self.draw_prompt();
+                self.draw_prompt(screen);
             }
             Mode::Settings => {}
         }
     }
+}
+
+pub fn draw_border(theme: &Theme) -> String {
+    let (width, height) = termion::terminal_size().unwrap();
+    let height = height - 1;
+    let channels_height = theme.get_channels_height(height);
+    let servers_height = theme.get_servers_height(height);
+
+    let left_margin = theme.left_margin;
+
+    let total_border_width = (theme.servers.border.left.width()
+        + theme.servers.border.right.width()
+        + theme.messages.border.left.width()
+        + theme.messages.border.right.width())
+        as usize;
+    let space_padding = " ".repeat(width as usize - left_margin - total_border_width);
+    let rs = termion::color::Fg(termion::color::Reset).to_string()
+        + (&termion::color::Bg(termion::color::Reset).to_string());
+
+    format!("{0}{1}{sttl}{2}{3}\r\n{stleft}{4}{stright}{mleft}{space_padding}{mright}\r\n{stleft}{5}{stright}{mleft}{space_padding}{mright}\r\n{6}{7}{8}{9}{sbl}{10}{11}",
+/*0*/       termion::cursor::Goto(1, 1),
+/*1*/       "",
+/*2*/       border_rep(&theme.status.border.top, left_margin),
+
+/*3*/       if theme.messages.border.left.width() == 0 || theme.channels.border.right.width() == 0 {
+            format!("{sttop_split}{}{mtr}", 
+                border_rep(&theme.messages.border.top, width as usize - left_margin - total_border_width),
+
+                mtr = theme.messages.border.tr,
+                sttop_split = theme.status.border.top_split,
+            )
+        } else {
+            format!("{sttr}{mtl}{}{mtr}", 
+                border_rep(&theme.messages.border.top, width as usize - left_margin - total_border_width),
+
+                mtr = theme.messages.border.tr,
+                mtl = theme.messages.border.tl,
+                sttr = theme.status.border.tr,
+            )
+        },
+
+/*4*/       centred("Connected to", left_margin),
+
+/*5*/       centred("cospox.com", theme.left_margin),
+
+/*6*/       if theme.channels.border.bottom.width() > 0 {
+            format!("{stleft_split}{}{stright_split}{mleft}{}{mright}\r\n",
+                border_rep(&theme.channels.border.bottom, left_margin),
+                space_padding,
+                stleft_split = theme.status.border.left_split,
+                stright_split = theme.status.border.right_split,
+                mright = theme.messages.border.right,
+                mleft = theme.messages.border.left,
+            )
+        } else {
+            "".to_string()
+        },
+
+/*7*/       format!("{cleft}{rs}{}{cright}{rs}{mleft}{}{mright}\r\n",
+            " ".repeat(left_margin),
+            space_padding,
+            rs = rs,
+            cleft = theme.channels.border.left,
+            cright = theme.channels.border.right,
+            mright = theme.messages.border.right,
+            mleft = theme.messages.border.left,
+        ).repeat(channels_height),
+
+/*8*/       if theme.channels.border.bottom.width() > 0 && theme.servers.border.top.width() > 0 {
+            format!("{cbl}{}{cbr}{mleft}{}{mright}\r\n{stl}{}{str}{mleft}{}{mright}\r\n",
+                border_rep(&theme.channels.border.bottom, left_margin),
+                space_padding,
+                border_rep(&theme.servers.border.top, left_margin),
+                space_padding,
+                cbl = theme.channels.border.bl,
+                cbr = theme.channels.border.br,
+                str = theme.servers.border.tr,
+                stl = theme.servers.border.tl,
+                mright = theme.messages.border.right,
+                mleft = theme.messages.border.left,
+            )
+        } else if theme.channels.border.bottom.width() > 0 {
+            format!("{cleft_split}{}{cright_split}{mleft}{}{mright}\r\n", 
+                border_rep(&theme.channels.border.bottom, left_margin),
+                space_padding,
+                cleft_split = theme.channels.border.left_split,
+                cright_split = theme.channels.border.right_split,
+                mright = theme.messages.border.right,
+                mleft = theme.messages.border.left,
+            )
+        } else if theme.servers.border.top.width() > 0 {
+            format!("{sleft_split}{}{sright_split}{mleft}{}{mright}\r\n", 
+                border_rep(&theme.servers.border.top, left_margin),
+                space_padding,
+                sleft_split = theme.servers.border.left_split,
+                sright_split = theme.servers.border.right_split,
+                mright = theme.messages.border.right,
+                mleft = theme.messages.border.left,
+            )
+        } else {
+            "".to_string()
+        },
+
+/*9*/       format!("{sleft}{rs}{}{sright}{rs}{mleft}{}{mright}\r\n", 
+            " ".repeat(theme.left_margin), 
+            space_padding,
+            rs = rs,
+            sleft = theme.servers.border.left,
+            sright = theme.servers.border.right,
+            mright = theme.messages.border.right,
+            mleft = theme.messages.border.left,
+        ).repeat(servers_height),
+
+/*10*/      border_rep(&theme.servers.border.bottom, left_margin),
+
+/*11*/      if theme.messages.border.left.width() == 0 || theme.servers.border.right.width() == 0 {
+            format!("{sbottom_split}{}{mbr}", 
+                border_rep(&theme.messages.border.bottom, width as usize - left_margin - total_border_width),
+
+                mbr = theme.messages.border.br,
+                sbottom_split = theme.servers.border.bottom_split,
+            )
+        } else {
+            format!("{sbr}{mbl}{}{mbr}", 
+                border_rep(&theme.messages.border.bottom, width as usize - left_margin - total_border_width),
+
+                mbr = theme.messages.border.br,
+                mbl = theme.messages.border.bl,
+                sbr = theme.servers.border.br,
+            )
+        },
+
+        //stl = theme.servers.border.tl,
+        sttl = theme.status.border.tl,
+        sbl = theme.servers.border.bl,
+        //ctop_split = theme.channels.border.top_split,
+        //sleft = theme.servers.border.left,
+        //cleft = theme.channels.border.left,
+        stleft = theme.status.border.left,
+        //sright = theme.servers.border.right,
+        //sleft_split = theme.servers.border.left_split,
+        //sright_split = theme.servers.border.right_split,
+        //sbottom_split = theme.servers.border.bottom_split,
+        mright = theme.messages.border.right,
+        //cright = theme.channels.border.right,
+        stright = theme.status.border.right,
+        mleft = theme.messages.border.left,
+        //mbr = theme.messages.border.br,
+        //mtr = theme.messages.border.tr,
+    )
 }
