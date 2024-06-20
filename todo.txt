@@ -14,6 +14,7 @@ features:
 	- server folders
 	- current alt key combos are kinda bad
 	- servers & channels scroll
+	- store "last modified at" tags with settings (both locally and on the server) to choose the newest one
 code:
 	- figure out what to do when write causes an error
 	- migrate away from using raw json as much as possible
@@ -21,6 +22,7 @@ code:
 	- prompt: max_width
 in progress:
 	- config file
+	- sync server support
 	- mouse support (servers, channels, etc)
 	- figure out a more elegant way to represent servers
 done:

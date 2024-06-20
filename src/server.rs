@@ -8,6 +8,7 @@ use base64::prelude::*;
 use fmtstring::FmtString;
 use serde::ser::{Serialize, SerializeStruct, Serializer};
 use std::collections::HashMap;
+use std::io::Write;
 use std::net::SocketAddr;
 use std::sync::mpsc::Sender;
 use tokio::io::{ReadHalf, WriteHalf};
@@ -17,11 +18,25 @@ use tokio::sync::broadcast::Receiver;
 
 type SocketStream = TcpStream;
 
-pub trait WriteAsterRequest {
+pub trait WriteAsterRequestAsync {
     async fn write_request(&mut self, command: api::Request) -> Result<usize, std::io::Error>;
 }
 
-impl WriteAsterRequest for WriteHalf<SocketStream> {
+pub trait WriteAsterRequest {
+    fn write_request(&mut self, command: &api::Request) -> Result<(), std::io::Error>;
+}
+
+impl WriteAsterRequest for std::net::TcpStream {
+    fn write_request(&mut self, command: &api::Request) -> Result<(), std::io::Error> {
+        write!(
+            self,
+            "{}\n",
+            serde_json::to_string(command).unwrap()
+        )
+    }
+}
+
+impl WriteAsterRequestAsync for WriteHalf<SocketStream> {
     async fn write_request(&mut self, command: api::Request) -> Result<usize, std::io::Error> {
         // Unwrap is fine because I'm pretty certain if the request can't be serialised
         // then there's something dramatically wrong
@@ -47,10 +62,14 @@ impl Peer {
             .into_rgb8();
 
         // yea this requires unsafe, but it avoids a dependency, and is perfectly safe™ I think
-        let pfp = dct_tiv::textify_dct(&img, &dct_tiv::DEFAULT_DCT_MATRICIES, &dct_tiv::DEFAULT_PALETTE)
-            .into_iter()
-            .next()
-            .unwrap();
+        let pfp = dct_tiv::textify_dct(
+            &img,
+            &dct_tiv::DEFAULT_DCT_MATRICIES,
+            &dct_tiv::DEFAULT_PALETTE,
+        )
+        .into_iter()
+        .next()
+        .unwrap();
         Self {
             uuid: user.uuid,
             name: user.name,

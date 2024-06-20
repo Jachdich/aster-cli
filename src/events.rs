@@ -5,7 +5,7 @@ use crate::gui::GUI;
 use crate::prompt::EditBuffer;
 use crate::prompt::PromptEvent;
 use crate::server::Identification;
-use crate::server::WriteAsterRequest;
+use crate::server::WriteAsterRequestAsync;
 use termion::event::{Event, Key, MouseButton, MouseEvent};
 
 impl GUI {

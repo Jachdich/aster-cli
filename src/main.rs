@@ -8,9 +8,10 @@ use crate::drawing::draw_border;
 use crate::gui::Settings;
 use crate::prompt::*;
 use crate::server::Server;
-use api::Status;
+use api::{Status, SyncData, SyncServer};
 use drawing::Theme;
 use fmtstring::FmtString;
+use server::WriteAsterRequest;
 use std::convert::TryInto;
 use std::io::{stdin, stdout, BufRead, BufReader, Write};
 use std::net::SocketAddr;
@@ -124,15 +125,98 @@ async fn load_servers(
     servers
 }
 
+fn load_sync_data(
+    ip: &str,
+    port: u16,
+    uname: &str,
+    passwd: &str,
+) -> Result<(Option<SyncData>, Vec<SyncServer>), std::io::Error> {
+    let mut conn = std::net::TcpStream::connect((ip, port))?;
+    conn.write_request(&api::Request::LoginRequest {
+        passwd: passwd.to_owned(),
+        uname: Some(uname.to_owned()),
+        uuid: None,
+    })?;
+    conn.write_request(&api::Request::SyncGetRequest)?;
+    conn.write_request(&api::Request::SyncGetServersRequest)?;
+
+    let mut reader = BufReader::new(conn);
+    let mut syncdata: Option<SyncData> = None;
+    let mut syncservers: Vec<SyncServer> = Vec::new();
+    let mut got_data = false;
+    let mut got_servers = false;
+    loop {
+        let mut buf = String::new();
+
+        BufRead::read_line(&mut reader, &mut buf)?;
+        let response: Response = serde_json::from_str(&buf).unwrap();
+        use std::io::{Error, ErrorKind};
+        use Status::*;
+        match response {
+            Response::LoginResponse { status: Ok, .. } => (),
+            Response::LoginResponse {
+                status: Forbidden, ..
+            } => return Err(Error::new(ErrorKind::PermissionDenied, "")),
+            Response::LoginResponse {
+                status: NotFound, ..
+            } => return Err(Error::new(ErrorKind::NotFound, "")),
+            Response::SyncGetResponse {
+                status: Ok,
+                data: Some(data),
+            } => {
+                syncdata = Some(data);
+                got_data = true
+            }
+            Response::SyncGetResponse {
+                status: NotFound, ..
+            } => got_data = true,
+            Response::SyncGetServersResponse {
+                status: Ok,
+                servers: Some(servers),
+            } => {
+                syncservers = servers;
+                got_servers = true;
+            }
+            Response::APIVersion { .. } => (),
+            res => {
+                // error on non-OK status. it's fine if the server sends us data we don't care about, as long as it's Ok
+                if res.status() != Ok {
+                    return Err(Error::new(
+                        ErrorKind::Other,
+                        format!(
+                            "Unexpected result from the server: {}: {}",
+                            res.name(),
+                            res.status()
+                        ),
+                    ));
+                }
+            }
+        }
+        if got_data && got_servers {
+            return Result::Ok((syncdata, syncservers));
+        }
+    }
+}
+
+enum SettingsError {
+    Network(std::io::Error),
+    Quit,
+}
+
 async fn load_settings<W: Write>(
     config: &serde_json::Value,
     screen: &mut W,
-    cancel: broadcast::Sender<()>,
-) -> Settings {
+) -> Result<Settings, SettingsError> {
     let uname: String;
     let passwd: String;
-    let pfp: String;
-    if config["uname"].is_null() || config["passwd"].is_null() {
+    let sync_ip: String;
+    let sync_port: u16;
+    let pfp = config["pfp"].as_str().unwrap().to_owned(); // unwrap ok: json will always contain default pfp, even if none in file
+    if config["uname"].is_null()
+        || config["passwd"].is_null()
+        || config["sync_ip"].is_null()
+        || config["sync_port"].is_null()
+    {
         let theme = Theme::new("themes/default.json").unwrap(); // TODO get this from a legitimate source, rn its validity is questionable
 
         let mut prompt = Prompt::new(
@@ -170,72 +254,19 @@ async fn load_settings<W: Write>(
         write!(screen, "{}", termion::clear::All).unwrap();
         prompt.draw(screen, x, y, &theme);
         screen.flush().unwrap();
-        for event in stdin().events() {
-            match prompt.handle_event(event.unwrap()) {
+        let mut events = stdin().events();
+        loop {
+            let event = events.next();
+            match prompt.handle_event(event.unwrap().unwrap()) {
                 Some(PromptEvent::ButtonPressed("Login")) => {
-                    let ip = prompt.get_str("Sync server IP").unwrap();
-                    let port = prompt.get_u16("Sync server port").unwrap();
-                    let sync_uname = prompt.get_str("Username").unwrap();
-                    let passwd = prompt.get_str("Password").unwrap();
-                    let conn = std::net::TcpStream::connect((ip, port));
-                    match conn {
-                        Ok(mut conn) => {
-                            write!(
-                                conn,
-                                "{}\n",
-                                serde_json::to_string(&api::Request::LoginRequest {
-                                    passwd: passwd.to_owned(),
-                                    uname: Some(sync_uname.to_owned()),
-                                    uuid: None
-                                })
-                                .unwrap()
-                            )
-                            .unwrap();
-                            write!(
-                                conn,
-                                "{}\n",
-                                serde_json::to_string(&api::Request::SyncGetRequest).unwrap()
-                            )
-                            .unwrap();
-                            write!(
-                                conn,
-                                "{}\n",
-                                serde_json::to_string(&api::Request::SyncGetServersRequest)
-                                    .unwrap()
-                            )
-                            .unwrap();
-
-                            let mut reader = BufReader::new(conn);
-                            loop {
-                                let mut buf = String::new();
-
-                                match BufRead::read_line(&mut reader, &mut buf) {
-                                    Ok(_) => {
-                                        let response: Response =
-                                            serde_json::from_str(&buf).unwrap();
-                                        match response {
-                                            Response::LoginResponse { status: Status::Ok, .. } => (),
-                                            Response::LoginResponse { status, .. } => panic!("{}", status),
-                                            Response::SyncGetResponse { status: Status::Ok, data: Some(data) } => {
-                                                uname = data.uname;
-                                            },
-                                            Response::SyncGetServersResponse { status, servers } => todo!(),
-                                            Response::APIVersion { .. } => (),
-                                            _ => unreachable!(),
-                                        }
-                                    }
-
-                                    Err(_) => todo!(),
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            // ...
-                        }
-                    }
+                    sync_ip = prompt.get_str("Sync server IP").unwrap().to_owned();
+                    sync_port = prompt.get_u16("Sync server port").unwrap();
+                    uname = prompt.get_str("Username").unwrap().to_owned();
+                    passwd = prompt.get_str("Password").unwrap().to_owned();
+                    break;
                 }
                 Some(PromptEvent::ButtonPressed("Register")) => todo!(),
-                Some(PromptEvent::ButtonPressed("Quit")) => todo!(),
+                Some(PromptEvent::ButtonPressed("Quit")) => return Err(SettingsError::Quit),
                 Some(PromptEvent::ButtonPressed(_)) => unreachable!(),
                 None => (),
             }
@@ -243,20 +274,20 @@ async fn load_settings<W: Write>(
             screen.flush().unwrap();
         }
     } else {
-        // yea we already have all the data. no need to look it up!! (maybe we should look it up anyway (TODO figure this out))
+        // yea we already have all the data. no need to ask for it!!
         uname = config["uname"].as_str().unwrap().to_owned(); // yea i think this unwrap is O.K. rn
         passwd = config["passwd"].as_str().unwrap().to_owned(); // yea i think this unwrap is O.K. rn
-        pfp = config["pfp"].as_str().unwrap().to_owned(); // yea i think this unwrap is O.K. rn
+        sync_ip = config["sync_ip"].as_str().unwrap().to_owned(); // yea i think this unwrap is O.K. rn
+        sync_port = config["sync_port"].as_u64().unwrap() as u16; // yea i think this unwrap is O.K. rn
     }
 
-    // let settings: Settings = serde_json::from_value(config).expect("Invalid config file!");
-    let settings = Settings {
-        uname,
-        passwd,
-        pfp,
-    };
+    let (sync_data, sync_servers) = load_sync_data(&sync_ip, sync_port, &uname, &passwd).map_err(|e| SettingsError::Network(e))?;
 
-    settings
+    if let Some(sync_data) = sync_data {
+        Ok(Settings { uname: sync_data.uname, passwd, pfp: sync_data.pfp })
+    } else {
+        Ok(Settings { uname, passwd, pfp })
+    }
 }
 
 #[tokio::main]
@@ -272,7 +303,15 @@ async fn main() {
     let mut screen = termion::input::MouseTerminal::from(stdout().into_raw_mode().unwrap());
 
     let conf = load_config_json();
-    let settings = load_settings(&conf, &mut screen, cancel_tx.clone()).await;
+    let settings = match load_settings(&conf, &mut screen).await {
+        Err(SettingsError::Quit) => return,
+        Err(SettingsError::Network(e)) => {
+            drop(screen);
+            eprintln!("Network error occurred! {:?}", e);
+            return;
+        }
+        Ok(settings) => settings,
+    };
     let servers = load_servers(&conf, tx.clone(), cancel_tx.clone()).await;
 
     let mut gui = GUI::new(tx.clone(), cancel_tx.clone(), settings, servers).await;
