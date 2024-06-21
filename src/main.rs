@@ -11,7 +11,7 @@ use crate::server::Server;
 use api::{Status, SyncData, SyncServer};
 use drawing::Theme;
 use fmtstring::FmtString;
-use server::WriteAsterRequest;
+use server::{Identification, WriteAsterRequest};
 use std::convert::TryInto;
 use std::io::{stdin, stdout, BufRead, BufReader, Write};
 use std::net::SocketAddr;
@@ -53,26 +53,27 @@ pub enum LocalMessage {
     Network(String, SocketAddr),
 }
 
-async fn init_server_from_json(
-    serv: &serde_json::Value,
+async fn init_server_from_syncserver(
+    serv: &SyncServer,
     tx: &std::sync::mpsc::Sender<LocalMessage>,
     cancel: &broadcast::Sender<()>,
 ) -> Option<Server> {
     let mut conn = Server::new(
-        serv["ip"].as_str()?.into(),
-        serv["port"].as_u64()?.try_into().ok()?,
+        serv.ip.clone(),
+        serv.port as u16,
         tx.clone(),
         cancel.subscribe(),
     )
     .await;
     if conn.is_online() {
-        let id = if let Some(uuid) = serv["uuid"].as_i64() {
-            crate::server::Identification::Uuid(uuid)
-        } else if let Some(uname) = serv["uname"].as_str() {
-            crate::server::Identification::Username(uname.to_owned())
-        } else {
-            return None;
-        };
+        // let id = if let Some(uuid) = serv.user_uuid {
+        //     crate::server::Identification::Uuid(uuid)
+        // } else if let Some(uname) = serv["uname"].as_str() {
+        //     crate::server::Identification::Username(uname.to_owned())
+        // } else {
+        //     return None;
+        // };
+        let id = Identification::Uuid(serv.user_uuid);
 
         match conn.network.as_mut().unwrap().initialise(id).await {
             Ok(()) => (),
@@ -81,10 +82,8 @@ async fn init_server_from_json(
     }
 
     if !conn.is_online() {
-        // preserve the info we know, if any, from the json file
-        conn.uname = serv["uname"].as_str().map(|s| s.to_owned());
-        conn.name = serv["name"].as_str().map(|s| s.to_owned());
-        conn.uuid = serv["uuid"].as_i64();
+        conn.name = serv.name.clone(); // TODO get rid of this clone()?
+        conn.uuid = Some(serv.user_uuid);
     }
     Some(conn)
 }
@@ -108,14 +107,14 @@ fn load_config_json() -> serde_json::Value {
 }
 
 async fn load_servers(
-    json: &serde_json::Value,
+    server_info: &[api::SyncServer],
     tx: std::sync::mpsc::Sender<LocalMessage>,
     cancel: broadcast::Sender<()>,
 ) -> Vec<Server> {
     let mut servers: Vec<Server> = Vec::new();
 
-    for serv in json["servers"].as_array().expect("Invalid config file!") {
-        let conn = init_server_from_json(serv, &tx, &cancel).await;
+    for serv in server_info {
+        let conn = init_server_from_syncserver(serv, &tx, &cancel).await;
         if let Some(conn) = conn {
             servers.push(conn);
         } else {
@@ -203,15 +202,10 @@ enum SettingsError {
     Quit,
 }
 
-async fn load_settings<W: Write>(
+fn get_sync_details<W: Write>(
     config: &serde_json::Value,
     screen: &mut W,
-) -> Result<Settings, SettingsError> {
-    let uname: String;
-    let passwd: String;
-    let sync_ip: String;
-    let sync_port: u16;
-    let pfp = config["pfp"].as_str().unwrap().to_owned(); // unwrap ok: json will always contain default pfp, even if none in file
+) -> Result<(String, u16, String, String), ()> {
     if config["uname"].is_null()
         || config["passwd"].is_null()
         || config["sync_ip"].is_null()
@@ -259,14 +253,14 @@ async fn load_settings<W: Write>(
             let event = events.next();
             match prompt.handle_event(event.unwrap().unwrap()) {
                 Some(PromptEvent::ButtonPressed("Login")) => {
-                    sync_ip = prompt.get_str("Sync server IP").unwrap().to_owned();
-                    sync_port = prompt.get_u16("Sync server port").unwrap();
-                    uname = prompt.get_str("Username").unwrap().to_owned();
-                    passwd = prompt.get_str("Password").unwrap().to_owned();
-                    break;
+                    let sync_ip = prompt.get_str("Sync server IP").unwrap().to_owned();
+                    let sync_port = prompt.get_u16("Sync server port").unwrap();
+                    let uname = prompt.get_str("Username").unwrap().to_owned();
+                    let passwd = prompt.get_str("Password").unwrap().to_owned();
+                    return Ok((sync_ip, sync_port, uname, passwd));
                 }
                 Some(PromptEvent::ButtonPressed("Register")) => todo!(),
-                Some(PromptEvent::ButtonPressed("Quit")) => return Err(SettingsError::Quit),
+                Some(PromptEvent::ButtonPressed("Quit")) => return Err(()),
                 Some(PromptEvent::ButtonPressed(_)) => unreachable!(),
                 None => (),
             }
@@ -275,18 +269,39 @@ async fn load_settings<W: Write>(
         }
     } else {
         // yea we already have all the data. no need to ask for it!!
-        uname = config["uname"].as_str().unwrap().to_owned(); // yea i think this unwrap is O.K. rn
-        passwd = config["passwd"].as_str().unwrap().to_owned(); // yea i think this unwrap is O.K. rn
-        sync_ip = config["sync_ip"].as_str().unwrap().to_owned(); // yea i think this unwrap is O.K. rn
-        sync_port = config["sync_port"].as_u64().unwrap() as u16; // yea i think this unwrap is O.K. rn
+        let uname = config["uname"].as_str().unwrap().to_owned(); // yea i think this unwrap is O.K. rn
+        let passwd = config["passwd"].as_str().unwrap().to_owned(); // yea i think this unwrap is O.K. rn
+        let sync_ip = config["sync_ip"].as_str().unwrap().to_owned(); // yea i think this unwrap is O.K. rn
+        let sync_port = config["sync_port"].as_u64().unwrap() as u16; // yea i think this unwrap is O.K. rn
+        return Ok((sync_ip, sync_port, uname, passwd));
     }
+}
 
-    let (sync_data, sync_servers) = load_sync_data(&sync_ip, sync_port, &uname, &passwd).map_err(|e| SettingsError::Network(e))?;
-
+async fn load_settings<W: Write>(
+    config: &serde_json::Value,
+    sync_data: Option<SyncData>,
+) -> Result<Settings, SettingsError> {
+    let pfp = config["pfp"].as_str().unwrap().to_owned(); // unwrap ok: json will always contain default pfp, even if none in file
     if let Some(sync_data) = sync_data {
-        Ok(Settings { uname: sync_data.uname, passwd, pfp: sync_data.pfp })
+        Ok(Settings {
+            uname: sync_data.uname,
+            passwd,
+            pfp: sync_data.pfp,
+        })
     } else {
         Ok(Settings { uname, passwd, pfp })
+    }
+}
+
+fn process_input(tx: std::sync::mpsc::Sender<LocalMessage>) {
+    let stdin = stdin();
+
+    for event in stdin.events() {
+        tx.send(LocalMessage::Keyboard(event.as_ref().unwrap().clone()))
+            .unwrap();
+        if let Event::Key(Key::Ctrl('c')) = event.unwrap() {
+            return;
+        }
     }
 }
 
@@ -301,17 +316,19 @@ async fn main() {
     drop(cancel_rx); // bruh why does it give me a rx, I just want a tx for now
 
     let mut screen = termion::input::MouseTerminal::from(stdout().into_raw_mode().unwrap());
-
     let conf = load_config_json();
-    let settings = match load_settings(&conf, &mut screen).await {
-        Err(SettingsError::Quit) => return,
-        Err(SettingsError::Network(e)) => {
-            drop(screen);
-            eprintln!("Network error occurred! {:?}", e);
-            return;
+
+    let (sync_data, sync_servers) = loop {
+        let Ok((sync_ip, sync_port, uname, passwd)) = get_sync_details(&conf, &mut screen) else {
+            return; // quit because the only error state is if the user decides to exit
+        };
+
+        match load_sync_data(&sync_ip, sync_port, &uname, &passwd) {
+            Ok((sync_data, sync_servers)) => break (sync_data, sync_servers),
+            Err(e) => println!("{}A network error occurred while logging in. Is the server offline? Details: {:?}", termion::cursor::Goto(1, 1), e),
         }
-        Ok(settings) => settings,
     };
+
     let servers = load_servers(&conf, tx.clone(), cancel_tx.clone()).await;
 
     let mut gui = GUI::new(tx.clone(), cancel_tx.clone(), settings, servers).await;
@@ -322,16 +339,7 @@ async fn main() {
 
     let input_tx = tx.clone();
     tokio::spawn(async move {
-        let stdin = stdin();
-
-        for event in stdin.events() {
-            input_tx
-                .send(LocalMessage::Keyboard(event.as_ref().unwrap().clone()))
-                .unwrap();
-            if let Event::Key(Key::Ctrl('c')) = event.unwrap() {
-                return;
-            }
-        }
+        process_input(input_tx);
     });
 
     loop {

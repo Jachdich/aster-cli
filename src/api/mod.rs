@@ -39,7 +39,8 @@ impl std::fmt::Display for Status {
 #[derive(Serialize, Deserialize)]
 pub struct SyncServer {
     pub user_uuid: i64,
-    pub server_uuid: i64,
+    pub server_uuid: i64, // rename: uuid
+    // pub uname: Option<String>,
     pub ip: String,
     pub port: i32,
     pub pfp: Option<String>,
