@@ -21,14 +21,16 @@ impl EditBuffer {
     pub fn push(&mut self, c: char) {
         let i = if self.edit_position == 0 {
             0
-        } else {
+        } else if self.edit_position + 1 < self.data.chars().count() {
             self.data
                 .char_indices()
-                .nth(self.edit_position - 1)
+                .nth(self.edit_position)
                 .unwrap()
-                .0
-                + 1 // edit position should always be in range...
+                .0 // edit position should always be in range...
+        } else {
+            self.data.bytes().len()
         };
+
         self.data.insert(i, c);
         self.edit_position += 1;
     }
