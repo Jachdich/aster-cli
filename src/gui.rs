@@ -19,6 +19,8 @@ pub struct Settings {
     pub uname: String,
     pub passwd: String,
     pub pfp: String,
+    pub sync_ip: String,
+    pub sync_port: u16,
 }
 
 pub struct GUI {

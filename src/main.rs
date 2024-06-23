@@ -66,15 +66,11 @@ async fn init_server_from_syncserver(
     )
     .await;
     if conn.is_online() {
-        // let id = if let Some(uuid) = serv.user_uuid {
-        //     crate::server::Identification::Uuid(uuid)
-        // } else if let Some(uname) = serv["uname"].as_str() {
-        //     crate::server::Identification::Username(uname.to_owned())
-        // } else {
-        //     return None;
-        // };
-        let id = Identification::Uuid(serv.user_uuid);
-
+        let id = if let Some(uuid) = serv.uuid {
+            crate::server::Identification::Uuid(uuid)
+        } else {
+            crate::server::Identification::Username(serv.uname.clone())
+        };
         match conn.network.as_mut().unwrap().initialise(id).await {
             Ok(()) => (),
             Err(e) => conn.to_offline(e.to_string()),
@@ -83,7 +79,8 @@ async fn init_server_from_syncserver(
 
     if !conn.is_online() {
         conn.name = serv.name.clone(); // TODO get rid of this clone()?
-        conn.uuid = Some(serv.user_uuid);
+        conn.uuid = serv.uuid;
+        conn.uname = Some(serv.uname.clone());
     }
     Some(conn)
 }
@@ -197,11 +194,6 @@ fn load_sync_data(
     }
 }
 
-enum SettingsError {
-    Network(std::io::Error),
-    Quit,
-}
-
 fn get_sync_details<W: Write>(
     config: &serde_json::Value,
     screen: &mut W,
@@ -277,19 +269,22 @@ fn get_sync_details<W: Write>(
     }
 }
 
-async fn load_settings<W: Write>(
-    config: &serde_json::Value,
-    sync_data: Option<SyncData>,
-) -> Result<Settings, SettingsError> {
+fn load_settings(config: &serde_json::Value, sync_data: Option<SyncData>) -> Settings {
     let pfp = config["pfp"].as_str().unwrap().to_owned(); // unwrap ok: json will always contain default pfp, even if none in file
+    let sync_ip = config["sync_ip"].as_str().unwrap().to_owned(); // unwrap ok: json will always contain default sync_ip, even if none in file
+    let sync_port = config["sync_port"].as_u64().unwrap() as u16; // unwrap ok: json will always contain default sync_port, even if none in file
     if let Some(sync_data) = sync_data {
-        Ok(Settings {
+        Settings {
             uname: sync_data.uname,
-            passwd,
+            passwd: config["passwd"].as_str().unwrap().to_owned(), // yea i think this unwrap is O.K. rn
             pfp: sync_data.pfp,
-        })
+            sync_ip, sync_port
+            
+        }
     } else {
-        Ok(Settings { uname, passwd, pfp })
+        let uname = config["uname"].as_str().unwrap().to_owned(); // yea i think this unwrap is O.K. rn
+        let passwd = config["passwd"].as_str().unwrap().to_owned(); // yea i think this unwrap is O.K. rn
+        Settings { uname, passwd, pfp, sync_ip, sync_port }
     }
 }
 
@@ -316,20 +311,34 @@ async fn main() {
     drop(cancel_rx); // bruh why does it give me a rx, I just want a tx for now
 
     let mut screen = termion::input::MouseTerminal::from(stdout().into_raw_mode().unwrap());
-    let conf = load_config_json();
+    let mut conf = load_config_json();
 
     let (sync_data, sync_servers) = loop {
         let Ok((sync_ip, sync_port, uname, passwd)) = get_sync_details(&conf, &mut screen) else {
             return; // quit because the only error state is if the user decides to exit
         };
 
+        // update the json to reflect our new-found data
+        // TODO this is not the most elegant way of doing it
+        conf["uname"] = uname.clone().into();
+        conf["passwd"] = passwd.clone().into();
+        conf["sync_ip"] = sync_ip.clone().into();
+        conf["sync_port"] = sync_port.into();
+
         match load_sync_data(&sync_ip, sync_port, &uname, &passwd) {
             Ok((sync_data, sync_servers)) => break (sync_data, sync_servers),
-            Err(e) => println!("{}A network error occurred while logging in. Is the server offline? Details: {:?}", termion::cursor::Goto(1, 1), e),
+            Err(e) => println!(
+                "{}A network error occurred while logging in. Is the server offline? Details: {:?}",
+                termion::cursor::Goto(1, 1),
+                e
+            ),
         }
     };
 
-    let servers = load_servers(&conf, tx.clone(), cancel_tx.clone()).await;
+    let a: Vec<SyncServer> = serde_json::from_value(conf["servers"].clone()).unwrap(); // TODO temp
+    
+    let servers = load_servers(&a, tx.clone(), cancel_tx.clone()).await;
+    let settings = load_settings(&conf, sync_data);
 
     let mut gui = GUI::new(tx.clone(), cancel_tx.clone(), settings, servers).await;
     screen.flush().unwrap();

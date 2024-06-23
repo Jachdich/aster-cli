@@ -98,12 +98,13 @@ pub struct Server {
 
 impl Serialize for Server {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let mut state = serializer.serialize_struct("Server", 5)?;
+        let mut state = serializer.serialize_struct("Server", 6)?;
         state.serialize_field("name", &self.name)?;
         state.serialize_field("ip", &self.ip)?;
         state.serialize_field("port", &self.port)?;
         state.serialize_field("uuid", &self.uuid)?;
         state.serialize_field("uname", &self.uname)?;
+        state.serialize_field("idx", &0)?; // TODO temp
         state.end()
     }
 }

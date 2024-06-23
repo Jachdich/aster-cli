@@ -25,5 +25,7 @@ in progress:
 	- sync server support
 	- mouse support (servers, channels, etc)
 	- figure out a more elegant way to represent servers
+	- support multiple line messages rendering
+	- probably best to store messages as a list of ready-formatted lines instead of calculating them each time
 done:
 	- pressing backspace in the prompt buffer does not remove the character from the screen
