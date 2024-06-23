@@ -363,6 +363,7 @@ impl GUI {
 
         // the actual height we have to work with, which is the window height
         // minus the number of lines the input buffer is taking up.
+        // minus the various borders
         let height = self.height - input_lines;
         let max_messages = height as usize
             - (self.theme.messages.border.top.width()
@@ -586,8 +587,7 @@ pub fn draw_border(theme: &Theme) -> String {
     let total_border_width = (theme.servers.border.left.width()
         + theme.servers.border.right.width()
         + theme.messages.border.left.width()
-        + theme.messages.border.right.width())
-        as usize;
+        + theme.messages.border.right.width()) as usize;
     let space_padding = " ".repeat(width as usize - left_margin - total_border_width);
     let rs = termion::color::Fg(termion::color::Reset).to_string()
         + (&termion::color::Bg(termion::color::Reset).to_string());

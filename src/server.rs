@@ -28,11 +28,7 @@ pub trait WriteAsterRequest {
 
 impl WriteAsterRequest for std::net::TcpStream {
     fn write_request(&mut self, command: &api::Request) -> Result<(), std::io::Error> {
-        write!(
-            self,
-            "{}\n",
-            serde_json::to_string(command).unwrap()
-        )
+        write!(self, "{}\n", serde_json::to_string(command).unwrap())
     }
 }
 
@@ -78,8 +74,12 @@ impl Peer {
     }
 }
 
+pub struct LoadedMessage {
+    pub lines: Vec<FmtString>,
+}
+
 pub struct OnlineServer {
-    pub loaded_messages: Vec<FmtString>,
+    pub loaded_messages: Vec<LoadedMessage>,
     pub channels: Vec<Channel>,
     pub curr_channel: Option<usize>,
     pub peers: HashMap<i64, Peer>,
@@ -94,6 +94,30 @@ pub struct Server {
     pub uuid: Option<i64>,
     pub uname: Option<String>,
     pub network: Result<OnlineServer, String>,
+}
+
+impl LoadedMessage {
+    pub fn from_message(
+        msg: &api::Message,
+        peers: &HashMap<i64, Peer>,
+        width: u16,
+    ) -> LoadedMessage {
+        let formatted = FmtString::from_str(&format!(
+            " {}: {}",
+            peers
+                .get(&msg.author_uuid)
+                .map(|x| x.name.as_str())
+                .unwrap_or("Unknown User"),
+            msg.content
+        ));
+
+        let pfp = peers
+            .get(&msg.author_uuid)
+            .map(|x| x.pfp.clone())
+            .unwrap_or(FmtString::from_str("  "));
+        let total = FmtString::concat(pfp, formatted);
+        LoadedMessage { lines: vec![total] }
+    }
 }
 
 impl Serialize for Server {
@@ -262,29 +286,19 @@ impl Server {
         }
     }
 
-    fn format_message(msg: &api::Message, peers: &HashMap<i64, Peer>) -> FmtString {
-        let formatted = FmtString::from_str(&format!(
-            " {}: {}",
-            peers
-                .get(&msg.author_uuid)
-                .map(|x| x.name.as_str())
-                .unwrap_or("Unknown User"),
-            msg.content
-        ));
-        // let mut ks: Vec<&i64> = peers.keys().collect();
-        // use rand::prelude::*;
-        // let mut rng = rand::thread_rng();
-        // ks.shuffle(&mut rng);
-
-        // let pfp = peers.get(ks[0]).unwrap().pfp.clone();
-        let pfp = peers
-            .get(&msg.author_uuid)
-            .map(|x| x.pfp.clone())
-            .unwrap_or(FmtString::from_str("  "));
-        FmtString::concat(pfp, formatted)
+    fn format_message(
+        msg: &api::Message,
+        peers: &HashMap<i64, Peer>,
+        message_width: u16,
+    ) -> LoadedMessage {
+        LoadedMessage::from_message(msg, peers, message_width)
     }
 
-    pub async fn handle_network_packet(&mut self, response: Response) -> Result<(), String> {
+    pub async fn handle_network_packet(
+        &mut self,
+        response: Response,
+        message_width: u16,
+    ) -> Result<(), String> {
         use api::Status::{self, *};
         use Response::*;
         let net = self
@@ -351,13 +365,14 @@ impl Server {
                 let new_msgs = data
                     .unwrap()
                     .into_iter()
-                    .map(|message| Self::format_message(&message, &net.peers))
+                    .map(|message| Self::format_message(&message, &net.peers, message_width))
                     .collect::<Vec<_>>(); // TODO get rid of this collect: borrow checker complains, tho
                 net.loaded_messages.extend(new_msgs);
             }
-            ContentResponse { message, .. } => net
-                .loaded_messages
-                .push(Self::format_message(&message, &net.peers)),
+            ContentResponse { message, .. } => {
+                net.loaded_messages
+                    .push(Self::format_message(&message, &net.peers, message_width))
+            }
             _ => {
                 if response.status() != Status::Ok {
                     return Err(format!(

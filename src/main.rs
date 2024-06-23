@@ -278,13 +278,19 @@ fn load_settings(config: &serde_json::Value, sync_data: Option<SyncData>) -> Set
             uname: sync_data.uname,
             passwd: config["passwd"].as_str().unwrap().to_owned(), // yea i think this unwrap is O.K. rn
             pfp: sync_data.pfp,
-            sync_ip, sync_port
-            
+            sync_ip,
+            sync_port,
         }
     } else {
         let uname = config["uname"].as_str().unwrap().to_owned(); // yea i think this unwrap is O.K. rn
         let passwd = config["passwd"].as_str().unwrap().to_owned(); // yea i think this unwrap is O.K. rn
-        Settings { uname, passwd, pfp, sync_ip, sync_port }
+        Settings {
+            uname,
+            passwd,
+            pfp,
+            sync_ip,
+            sync_port,
+        }
     }
 }
 
@@ -336,7 +342,7 @@ async fn main() {
     };
 
     let a: Vec<SyncServer> = serde_json::from_value(conf["servers"].clone()).unwrap(); // TODO temp
-    
+
     let servers = load_servers(&a, tx.clone(), cancel_tx.clone()).await;
     let settings = load_settings(&conf, sync_data);
 
@@ -381,10 +387,12 @@ async fn main() {
                 match obj {
                     Ok(obj) => {
                         let response: Response = serde_json::from_value(obj).unwrap();
+                        // for formatting the messages
+                        let max_message_width = width - gui.theme.left_margin as u16 - 4; // TODO why 4???
                         match gui
                             .get_server_by_addr(addr)
                             .expect("Network packet recv'd for offline server")
-                            .handle_network_packet(response)
+                            .handle_network_packet(response, max_message_width)
                             .await
                         {
                             Ok(()) => (),
