@@ -9,36 +9,27 @@ use crate::server::WriteAsterRequestAsync;
 use termion::event::{Event, Key, MouseButton, MouseEvent};
 
 impl GUI {
-    async fn send_message_to_server(&mut self, server: usize) {
-        let Ok(ref mut net) = self.servers[server].network else {
-            self.send_system("This server is offline!");
-            return;
-        };
-
-        let Some(ch) = net.curr_channel else {
-            self.send_system("No channel is selected you silly goose!");
-            return;
-        };
-
+    async fn send_message_to_server(&mut self, server: usize) -> Result<(), String> {
+        let net = self.servers[server]
+            .network
+            .as_mut()
+            .map_err(|e| e.to_owned())?;
+        let ch = net
+            .curr_channel
+            .ok_or("No channel is selected you silly goose!")?;
 
         let uuid = net.channels[ch].uuid;
         let content = self.buffer.data.clone();
-        let res = net
-            .write_half
+        net.write_half
             .write_request(crate::api::Request::SendRequest {
                 content,
                 channel: uuid,
             })
-            .await;
+            .await
+            .map_err(|e| e.to_string())?;
 
-        match res {
-            Ok(_) => {
-                self.buffer = EditBuffer::new("".to_string());
-            }
-            Err(error) => {
-                self.send_system(error.to_string().as_str());
-            }
-        }
+        self.buffer = EditBuffer::new("".to_string());
+        Ok(())
     }
 
     async fn handle_send_message(&mut self) {
@@ -52,7 +43,9 @@ impl GUI {
             }
             self.buffer = EditBuffer::new("".to_string());
         } else if let Some(curr_server) = self.curr_server {
-            self.send_message_to_server(curr_server).await;
+            if let Err(e) = self.send_message_to_server(curr_server).await {
+                self.send_system(&e);
+            }
         } else {
             self.send_system("No server is selected you silly goose!");
         }
