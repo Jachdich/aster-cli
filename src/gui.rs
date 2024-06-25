@@ -219,7 +219,11 @@ impl GUI {
 
     pub fn save_config(&mut self) {
         // TODO unwrap bade
-        let mut file = std::fs::File::create("preferences.json").unwrap();
+        let mut pref_dir = dirs::preference_dir().unwrap();
+        pref_dir.push("aster-cli");
+        std::fs::create_dir_all(pref_dir.as_path());
+        pref_dir.push("preferences.json");
+        let mut file = std::fs::File::create(pref_dir).unwrap();
         let server_list = serde_json::to_value(&self.servers).unwrap();
         let mut prefs = serde_json::to_value(&self.settings).unwrap();
         prefs["servers"] = server_list;

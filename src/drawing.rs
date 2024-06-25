@@ -5,11 +5,6 @@ use std::collections::HashMap;
 use std::fmt;
 use std::io::Write;
 
-const BUILTIN_THEMES: HashMap<String, Theme> = HashMap::from([(
-    "default".into(),
-    Theme::new("../themes/default.json").unwrap(),
-)]);
-
 fn centred(text: &str, width: usize) -> String {
     format!("{: ^1$}", text, width)
 }
@@ -215,8 +210,11 @@ impl ThemedArea {
 
 impl Theme {
     pub fn new(filename: &str) -> std::result::Result<Self, Box<dyn std::error::Error>> {
-        let totalcfg: serde_json::Value =
-            serde_json::from_str(&std::fs::read_to_string(filename)?)?;
+        let totalcfg: serde_json::Value = if filename == "themes/default.json" {
+            serde_json::from_str(include_str!("../themes/default.json"))?
+        } else {
+            serde_json::from_str(&std::fs::read_to_string(filename)?)?
+        };
 
         let servers = ThemedArea::new(&totalcfg["servers"], &totalcfg["global"]);
         let channels = ThemedArea::new(&totalcfg["channels"], &totalcfg["global"]);
