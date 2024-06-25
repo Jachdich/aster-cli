@@ -100,14 +100,15 @@ impl LoadedMessage {
     pub fn from_message(
         msg: &api::Message,
         peers: &HashMap<i64, Peer>,
-        width: u16,
+        width: usize,
     ) -> LoadedMessage {
-        let formatted = FmtString::from_str(&format!(
-            " {}: {}",
-            peers
+        let uname_str = peers
                 .get(&msg.author_uuid)
                 .map(|x| x.name.as_str())
-                .unwrap_or("Unknown User"),
+                .unwrap_or("Unknown User");
+        let formatted = FmtString::from_str(&format!(
+            " {}: {}",
+            uname_str,
             msg.content
         ));
 
@@ -115,8 +116,22 @@ impl LoadedMessage {
             .get(&msg.author_uuid)
             .map(|x| x.pfp.clone())
             .unwrap_or(FmtString::from_str("  "));
-        let total = FmtString::concat(pfp, formatted);
-        LoadedMessage { lines: vec![total] }
+        
+        let left_margin = pfp.len() + 1;
+        let mut lines = vec![pfp];
+        for c in formatted.into_iter() {
+            // unwraps are ok because we start with at least 1 element
+            let curr = lines.last().unwrap();
+            if c.ch == '\n' || curr.len() >= width - 1 {
+                lines.push(FmtString::from_str(&" ".repeat(left_margin)))
+            }
+            let curr = lines.last_mut().unwrap();
+            if c.ch != '\n' {
+                curr.push(c);
+            }
+        }
+
+        LoadedMessage { lines }
     }
 }
 
@@ -289,7 +304,7 @@ impl Server {
     fn format_message(
         msg: &api::Message,
         peers: &HashMap<i64, Peer>,
-        message_width: u16,
+        message_width: usize,
     ) -> LoadedMessage {
         LoadedMessage::from_message(msg, peers, message_width)
     }
@@ -297,7 +312,7 @@ impl Server {
     pub async fn handle_network_packet(
         &mut self,
         response: Response,
-        message_width: u16,
+        message_width: usize,
     ) -> Result<(), String> {
         use api::Status::{self, *};
         use Response::*;

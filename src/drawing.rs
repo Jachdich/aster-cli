@@ -358,15 +358,15 @@ impl GUI {
     }
 
     pub fn draw_messages<W: Write>(&mut self, screen: &mut W, input_lines: u16) {
-        let nothing = Vec::new();
+        let mut nothing = Vec::new();
         let messages = if let Some(curr_server) = self.curr_server {
             self.servers[curr_server]
                 .network
-                .as_ref()
-                .map(|net| &net.loaded_messages)
-                .unwrap_or(&nothing)
+                .as_mut()
+                .map(|net| &mut net.loaded_messages)
+                .unwrap_or(&mut nothing)
         } else {
-            &nothing
+            &mut nothing
         };
 
         // the actual height we have to work with, which is the window height
@@ -391,15 +391,12 @@ impl GUI {
             self.scroll = 0 - start_idx as isize;
         }
 
-        let mut total_lines = 0;
         let max_chars: usize = self.width as usize - self.theme.left_margin - 4;
         let max_lines = height - 2;
-        for msg in messages
+        let total_lines = messages
             [(start_idx as isize + self.scroll) as usize..(len as isize + self.scroll) as usize]
             .iter()
-        {
-            total_lines += (msg.len() as f64 / max_chars as f64).ceil() as usize;
-        }
+            .fold(0, |acc, msg| acc + msg.lines.len()); // lovely functional goodness
 
         let mut line = total_lines as u16;
 
@@ -407,19 +404,14 @@ impl GUI {
 
         for message in messages
             [(start_idx as isize + self.scroll) as usize..(len as isize + self.scroll) as usize]
-            .iter()
+            .iter_mut()
         {
-            let num_lines: usize = (message.len() as f64 / max_chars as f64).ceil() as usize;
+            let num_lines: usize = message.lines.len();
             for i in 0..num_lines {
                 if line >= max_lines {
                     line -= 1;
                     continue;
                 }
-                let e = if (i + 1) * max_chars >= message.len() {
-                    message.len()
-                } else {
-                    (i + 1) * max_chars
-                };
 
                 buffer.push_str(
                     &termion::cursor::Goto(
@@ -431,8 +423,8 @@ impl GUI {
                     )
                     .to_string(),
                 );
-                buffer.push_str(Into::<FmtString>::into(&message[i * max_chars..e]).to_str());
-                buffer.push_str(&" ".repeat(max_chars - message[i * max_chars..e].len()));
+                buffer.push_str(&message.lines[i].to_str());
+                buffer.push_str(&" ".repeat(max_chars - message.lines[i].len()));
                 line -= 1;
             }
         }

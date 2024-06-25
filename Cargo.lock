@@ -324,7 +324,7 @@ dependencies = [
 [[package]]
 name = "fmtstring"
 version = "0.1.0"
-source = "git+https://github.com/Jachdich/fmtstring#7b0f16425d391526763e67779d496e33992a79ad"
+source = "git+https://github.com/Jachdich/fmtstring#e6ea3af1836dcabc595b930296452c3d3bcfa817"
 dependencies = [
  "oklab",
  "termion 1.5.6",

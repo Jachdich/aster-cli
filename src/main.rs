@@ -418,7 +418,7 @@ async fn main() {
                     Ok(obj) => {
                         let response: Response = serde_json::from_value(obj).unwrap();
                         // for formatting the messages
-                        let max_message_width = width - gui.theme.left_margin as u16 - 4; // TODO why 4???
+                        let max_message_width = width as usize - gui.theme.left_margin - 4; // TODO why 4???
                         match gui
                             .get_server_by_addr(addr)
                             .expect("Network packet recv'd for offline server")
