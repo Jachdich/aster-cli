@@ -1,12 +1,19 @@
 use crate::gui::GUI;
 use crate::Mode;
 use fmtstring::{Colour, FmtChar, FmtString};
+use std::collections::HashMap;
 use std::fmt;
 use std::io::Write;
+
+const BUILTIN_THEMES: HashMap<String, Theme> = HashMap::from([(
+    "default".into(),
+    Theme::new("../themes/default.json").unwrap(),
+)]);
 
 fn centred(text: &str, width: usize) -> String {
     format!("{: ^1$}", text, width)
 }
+
 fn fmtchar_from_json_impl(val: &serde_json::Value) -> Option<FmtChar> {
     Some(FmtChar {
         ch: val[0].as_str()?.chars().next()?,
@@ -14,6 +21,7 @@ fn fmtchar_from_json_impl(val: &serde_json::Value) -> Option<FmtChar> {
         bg: parse_colour(&val[2].as_str()?),
     })
 }
+
 pub fn fmtchar_from_json(val: &serde_json::Value) -> OptionalFmtChar {
     OptionalFmtChar(fmtchar_from_json_impl(val))
 }

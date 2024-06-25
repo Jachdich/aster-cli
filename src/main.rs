@@ -11,8 +11,7 @@ use crate::server::Server;
 use api::{Status, SyncData, SyncServer};
 use drawing::Theme;
 use fmtstring::FmtString;
-use server::{Identification, WriteAsterRequest};
-use std::convert::TryInto;
+use server::WriteAsterRequest;
 use std::io::{stdin, stdout, BufRead, BufReader, Write};
 use std::net::SocketAddr;
 use termion::event::{Event, Key};
@@ -121,18 +120,31 @@ async fn load_servers(
     servers
 }
 
+enum AuthMode {
+    Login,
+    Register,
+}
+
 fn load_sync_data(
     ip: &str,
     port: u16,
     uname: &str,
     passwd: &str,
+    auth: AuthMode,
 ) -> Result<(Option<SyncData>, Vec<SyncServer>), std::io::Error> {
     let mut conn = std::net::TcpStream::connect((ip, port))?;
-    conn.write_request(&api::Request::LoginRequest {
-        passwd: passwd.to_owned(),
-        uname: Some(uname.to_owned()),
-        uuid: None,
-    })?;
+
+    match auth {
+        AuthMode::Login => conn.write_request(&api::Request::LoginRequest {
+            passwd: passwd.to_owned(),
+            uname: Some(uname.to_owned()),
+            uuid: None,
+        })?,
+        AuthMode::Register => conn.write_request(&api::Request::RegisterRequest {
+            passwd: passwd.to_owned(),
+            uname: uname.to_owned(),
+        })?,
+    }
     conn.write_request(&api::Request::SyncGetRequest)?;
     conn.write_request(&api::Request::SyncGetServersRequest)?;
 
@@ -147,33 +159,34 @@ fn load_sync_data(
         BufRead::read_line(&mut reader, &mut buf)?;
         let response: Response = serde_json::from_str(&buf).unwrap();
         use std::io::{Error, ErrorKind};
+        use Response::*;
         use Status::*;
         match response {
-            Response::LoginResponse { status: Ok, .. } => (),
-            Response::LoginResponse {
+            LoginResponse { status: Ok, .. } | RegisterResponse { status: Ok, .. } => (),
+            LoginResponse {
                 status: Forbidden, ..
             } => return Err(Error::new(ErrorKind::PermissionDenied, "")),
-            Response::LoginResponse {
+            LoginResponse {
                 status: NotFound, ..
             } => return Err(Error::new(ErrorKind::NotFound, "")),
-            Response::SyncGetResponse {
+            SyncGetResponse {
                 status: Ok,
                 data: Some(data),
             } => {
                 syncdata = Some(data);
                 got_data = true
             }
-            Response::SyncGetResponse {
+            SyncGetResponse {
                 status: NotFound, ..
             } => got_data = true,
-            Response::SyncGetServersResponse {
+            SyncGetServersResponse {
                 status: Ok,
                 servers: Some(servers),
             } => {
                 syncservers = servers;
                 got_servers = true;
             }
-            Response::APIVersion { .. } => (),
+            APIVersion { .. } => (),
             res => {
                 // error on non-OK status. it's fine if the server sends us data we don't care about, as long as it's Ok
                 if res.status() != Ok {
@@ -197,7 +210,7 @@ fn load_sync_data(
 fn get_sync_details<W: Write>(
     config: &serde_json::Value,
     screen: &mut W,
-) -> Result<(String, u16, String, String), ()> {
+) -> Result<(String, u16, String, String, AuthMode), ()> {
     if config["uname"].is_null()
         || config["passwd"].is_null()
         || config["sync_ip"].is_null()
@@ -243,15 +256,31 @@ fn get_sync_details<W: Write>(
         let mut events = stdin().events();
         loop {
             let event = events.next();
-            match prompt.handle_event(event.unwrap().unwrap()) {
-                Some(PromptEvent::ButtonPressed("Login")) => {
+            let prompt_event = prompt.handle_event(event.unwrap().unwrap());
+            match prompt_event {
+                Some(PromptEvent::ButtonPressed("Login"))
+                | Some(PromptEvent::ButtonPressed("Register")) => {
                     let sync_ip = prompt.get_str("Sync server IP").unwrap().to_owned();
                     let sync_port = prompt.get_u16("Sync server port").unwrap();
                     let uname = prompt.get_str("Username").unwrap().to_owned();
                     let passwd = prompt.get_str("Password").unwrap().to_owned();
-                    return Ok((sync_ip, sync_port, uname, passwd));
+
+                    // TODO this is a bit of a hack
+                    let PromptEvent::ButtonPressed(mode) = prompt_event.unwrap() else {
+                        unreachable!()
+                    };
+                    return Ok((
+                        sync_ip,
+                        sync_port,
+                        uname,
+                        passwd,
+                        if mode == "login" {
+                            AuthMode::Login
+                        } else {
+                            AuthMode::Register
+                        },
+                    ));
                 }
-                Some(PromptEvent::ButtonPressed("Register")) => todo!(),
                 Some(PromptEvent::ButtonPressed("Quit")) => return Err(()),
                 Some(PromptEvent::ButtonPressed(_)) => unreachable!(),
                 None => (),
@@ -265,7 +294,7 @@ fn get_sync_details<W: Write>(
         let passwd = config["passwd"].as_str().unwrap().to_owned(); // yea i think this unwrap is O.K. rn
         let sync_ip = config["sync_ip"].as_str().unwrap().to_owned(); // yea i think this unwrap is O.K. rn
         let sync_port = config["sync_port"].as_u64().unwrap() as u16; // yea i think this unwrap is O.K. rn
-        return Ok((sync_ip, sync_port, uname, passwd));
+        return Ok((sync_ip, sync_port, uname, passwd, AuthMode::Login));
     }
 }
 
@@ -320,7 +349,8 @@ async fn main() {
     let mut conf = load_config_json();
 
     let (sync_data, sync_servers) = loop {
-        let Ok((sync_ip, sync_port, uname, passwd)) = get_sync_details(&conf, &mut screen) else {
+        let Ok((sync_ip, sync_port, uname, passwd, auth)) = get_sync_details(&conf, &mut screen)
+        else {
             return; // quit because the only error state is if the user decides to exit
         };
 
@@ -331,7 +361,7 @@ async fn main() {
         conf["sync_ip"] = sync_ip.clone().into();
         conf["sync_port"] = sync_port.into();
 
-        match load_sync_data(&sync_ip, sync_port, &uname, &passwd) {
+        match load_sync_data(&sync_ip, sync_port, &uname, &passwd, auth) {
             Ok((sync_data, sync_servers)) => break (sync_data, sync_servers),
             Err(e) => println!(
                 "{}A network error occurred while logging in. Is the server offline? Details: {:?}",
