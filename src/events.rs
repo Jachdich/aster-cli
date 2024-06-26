@@ -56,6 +56,7 @@ impl GUI {
             Event::Key(Key::Char('\n')) => self.handle_send_message().await,
             Event::Key(Key::Char(ch)) => self.buffer.push(ch),
             Event::Key(Key::Backspace) => self.buffer.pop(),
+            Event::Key(Key::Ctrl('h')) => self.buffer.pop_word(),
             Event::Key(Key::Left) => self.buffer.left(),
             Event::Key(Key::Right) => self.buffer.right(),
 

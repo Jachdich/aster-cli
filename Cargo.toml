@@ -23,4 +23,5 @@ base64 = "*"
 image = "0.24.6"
 dct-tiv = { git = "https://github.com/Jachdich/dct-tiv" }
 fmtstring = { git = "https://github.com/Jachdich/fmtstring" }
+notify-rust = { version = "4.11.0", default-features = false, features = ["d"] }
 

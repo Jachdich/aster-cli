@@ -6,11 +6,13 @@ use crate::tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 use crate::LocalMessage;
 use base64::prelude::*;
 use fmtstring::FmtString;
+use notify_rust::{Notification, Timeout};
 use serde::ser::{Serialize, SerializeStruct, Serializer};
 use std::collections::HashMap;
 use std::io::Write;
 use std::net::SocketAddr;
 use std::sync::mpsc::Sender;
+use std::time::Duration;
 use tokio::io::{ReadHalf, WriteHalf};
 use tokio::net::TcpStream;
 use tokio::sync::broadcast::Receiver;
@@ -103,20 +105,16 @@ impl LoadedMessage {
         width: usize,
     ) -> LoadedMessage {
         let uname_str = peers
-                .get(&msg.author_uuid)
-                .map(|x| x.name.as_str())
-                .unwrap_or("Unknown User");
-        let formatted = FmtString::from_str(&format!(
-            " {}: {}",
-            uname_str,
-            msg.content
-        ));
+            .get(&msg.author_uuid)
+            .map(|x| x.name.as_str())
+            .unwrap_or("Unknown User");
+        let formatted = FmtString::from_str(&format!(" {}: {}", uname_str, msg.content));
 
         let pfp = peers
             .get(&msg.author_uuid)
             .map(|x| x.pfp.clone())
             .unwrap_or(FmtString::from_str("  "));
-        
+
         let left_margin = pfp.len() + 1;
         let mut lines = vec![pfp];
         for c in formatted.into_iter() {
@@ -196,6 +194,10 @@ impl OnlineServer {
     }
     pub async fn write(&mut self, request: Request) -> Result<usize, std::io::Error> {
         self.write_half.write_request(request).await
+    }
+
+    pub fn get_channel(&self, uuid: i64) -> Option<&Channel> {
+        self.channels.iter().find(|c| c.uuid == uuid)
     }
 }
 
@@ -313,6 +315,8 @@ impl Server {
         &mut self,
         response: Response,
         message_width: usize,
+        inactivity_time: Duration,
+        we_are_the_selected_server: bool,
     ) -> Result<(), String> {
         use api::Status::{self, *};
         use Response::*;
@@ -385,8 +389,37 @@ impl Server {
                 net.loaded_messages.extend(new_msgs);
             }
             ContentResponse { message, .. } => {
-                net.loaded_messages
-                    .push(Self::format_message(&message, &net.peers, message_width))
+                let in_current_channel = net
+                        .curr_channel
+                        .is_some_and(|c| net.channels[c].uuid == message.channel_uuid);
+                if in_current_channel {
+                    net.loaded_messages
+                        .push(Self::format_message(&message, &net.peers, message_width));
+                }
+                if !we_are_the_selected_server
+                    || !in_current_channel
+                    || inactivity_time > Duration::from_secs(10)
+                {
+                    Notification::new()
+                        .summary(&format!(
+                            "{} #{}",
+                            self.name.as_ref().map(|s| s.as_str()).unwrap_or(" "),
+                            net.get_channel(message.channel_uuid)
+                                .map(|c| c.name.as_str())
+                                .unwrap_or("Unknown Channel"),
+                        ))
+                        .body(&format!(
+                            "{}: {}",
+                            net.peers
+                                .get(&message.author_uuid)
+                                .map(|p| p.name.as_str())
+                                .unwrap_or("Unknown User"),
+                            message.content
+                        ))
+                        .timeout(Timeout::Milliseconds(6000))
+                        .show()
+                        .unwrap();
+                }
             }
             _ => {
                 if response.status() != Status::Ok {

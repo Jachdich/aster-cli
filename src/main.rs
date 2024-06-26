@@ -373,8 +373,6 @@ async fn main() {
         }
     };
 
-    println!("{:?}", conf["servers"]);
-
     let a: Vec<SyncServer> = serde_json::from_value(conf["servers"].clone()).unwrap(); // TODO temp
 
     let servers = load_servers(&a, tx.clone(), cancel_tx.clone()).await;
@@ -390,6 +388,8 @@ async fn main() {
     tokio::spawn(async move {
         process_input(input_tx);
     });
+
+    let mut last_interacted = std::time::SystemTime::now();
 
     loop {
         let (width, height) = termion::terminal_size().unwrap();
@@ -414,6 +414,7 @@ async fn main() {
                     cancel_tx.send(());
                     return;
                 }
+                last_interacted = std::time::SystemTime::now();
             }
 
             LocalMessage::Network(msg, addr) => {
@@ -423,10 +424,21 @@ async fn main() {
                         let response: Response = serde_json::from_value(obj).unwrap();
                         // for formatting the messages
                         let max_message_width = width as usize - gui.theme.left_margin - 4; // TODO why 4???
+                        let we_are_the_selected_server = gui.curr_server.is_some_and(|idx| {
+                            gui.servers[idx]
+                                .network
+                                .as_ref()
+                                .is_ok_and(|ref net| net.remote_addr == addr)
+                        });
                         match gui
                             .get_server_by_addr(addr)
                             .expect("Network packet recv'd for offline server")
-                            .handle_network_packet(response, max_message_width)
+                            .handle_network_packet(
+                                response,
+                                max_message_width,
+                                last_interacted.elapsed().expect("Could not get the time"),
+                                we_are_the_selected_server
+                            )
                             .await
                         {
                             Ok(()) => (),

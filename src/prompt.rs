@@ -45,6 +45,11 @@ impl EditBuffer {
             self.edit_position -= 1;
         }
     }
+
+    pub fn pop_word(&mut self) {
+        self.pop();
+    }
+    
     pub fn left(&mut self) {
         if self.edit_position > 0 {
             self.edit_position -= 1;
