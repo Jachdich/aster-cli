@@ -6,18 +6,23 @@ bugs:
 	- multi line messages don't get rebuilt upon resizing the window
 features:
 	- passwords
-	- ask for & save username
 	- changing pfp, nickname, username (across all servers)
 	- images
 	- markdown
 	- clickable links
-	- multi line editing
 	- cache things like nick changes on offline servers to send when they're back online
 	- try to reconnect to offline servers periodically
 	- server folders
 	- current alt key combos are kinda bad
 	- servers & channels scroll
 	- store "last modified at" tags with settings (both locally and on the server) to choose the newest one
+	- make it easier to switch accounts on servers if you logged in with a different one previously
+	- notifications
+	- ctrl+arrows for faster navigation, plus ctrl+backspace
+	- better keybinds/system for navigating around different menus
+	- ted says they cant delete as they type??
+	- windows support maybe...
+	- put on crates.io
 code:
 	- figure out what to do when write causes an error
 	- migrate away from using raw json as much as possible
@@ -25,11 +30,14 @@ code:
 	- prompt: max_width
 	- rewrite the message rendering code to be better
 in progress:
-	- config file
-	- sync server support
 	- mouse support (servers, channels, etc)
 	- figure out a more elegant way to represent servers
+tentatively done:
+	- config file
+	- sync server support
 done:
+	- multi line editing
+	- ask for & save username
 	- pressing backspace in the prompt buffer does not remove the character from the screen
 	- fix crash on unicode characters being typed in an edit buffer
 	- support multiple line messages rendering
