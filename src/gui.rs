@@ -1,27 +1,17 @@
 extern crate termion;
 
-use crate::api::{Request, Response};
+use crate::api::Request;
 use crate::drawing::Theme;
 use crate::prompt::{EditBuffer, Prompt, PromptField};
 use crate::server::{Identification, Server};
 use crate::Focus;
 use crate::LocalMessage;
 use crate::Mode;
-use fmtstring::FmtString;
-use serde::{Deserialize, Serialize};
-use std::io::{stdout, Write};
+use crate::Settings;
+use std::io::Write;
 use std::net::SocketAddr;
-use std::sync::mpsc::{Receiver, Sender};
+use std::sync::mpsc::Sender;
 use tokio::sync::broadcast;
-
-#[derive(Deserialize, Serialize)]
-pub struct Settings {
-    pub uname: String,
-    pub passwd: String,
-    pub pfp: String,
-    pub sync_ip: String,
-    pub sync_port: u16,
-}
 
 pub struct GUI {
     pub scroll: isize,
@@ -32,9 +22,8 @@ pub struct GUI {
     pub mode: Mode,
     pub focus: Focus,
     pub theme: Theme,
-    pub system_message: FmtString,
+    pub system_message: String,
     pub prompt: Option<Prompt>,
-    pub redraw: bool,
     pub width: u16,
     pub height: u16,
     pub cancel: broadcast::Sender<()>,
@@ -60,10 +49,9 @@ impl GUI {
             mode: Mode::Messages,
             focus: Focus::Edit,
             theme: Theme::new("themes/default.json").unwrap(),
-            system_message: FmtString::from_str(""),
+            system_message: "".into(),
 
             prompt: None,
-            redraw: true,
             width: 0,
             height: 0,
 
@@ -72,18 +60,8 @@ impl GUI {
         }
     }
 
-    pub fn curr_server(&self) -> Option<&Server> {
-        self.curr_server.map(|s| &self.servers[s])
-    }
-    pub fn curr_server_mut(&mut self) -> Option<&mut Server> {
-        match self.curr_server {
-            Some(server) => Some(&mut self.servers[server]),
-            None => None,
-        }
-    }
-
     pub fn send_system(&mut self, message: &str) {
-        self.system_message = format!("System: {}", message).into();
+        self.system_message = format!("System: {}", message);
     }
 
     pub async fn handle_send_command(&mut self, cmd: String) -> Result<(), CommandError> {
@@ -221,7 +199,7 @@ impl GUI {
         // TODO unwrap bade
         let mut pref_dir = dirs::preference_dir().unwrap();
         pref_dir.push("aster-cli");
-        std::fs::create_dir_all(pref_dir.as_path());
+        std::fs::create_dir_all(pref_dir.as_path()).expect("Unable to create the directory to put the config file in! Do you have permission?");
         pref_dir.push("preferences.json");
         let mut file = std::fs::File::create(pref_dir).unwrap();
         let server_list = serde_json::to_value(&self.servers).unwrap();

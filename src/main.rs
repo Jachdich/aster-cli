@@ -5,12 +5,12 @@ mod api;
 
 use crate::api::Response;
 use crate::drawing::draw_border;
-use crate::gui::Settings;
 use crate::prompt::*;
 use crate::server::Server;
 use api::{Status, SyncData, SyncServer};
 use drawing::Theme;
 use fmtstring::FmtString;
+use serde::{Deserialize, Serialize};
 use server::WriteAsterRequest;
 use std::io::{stdin, stdout, BufRead, BufReader, Write};
 use std::net::SocketAddr;
@@ -34,7 +34,7 @@ pub enum Mode {
     Settings,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Focus {
     ServerList,
     ChannelList,
@@ -50,6 +50,17 @@ pub enum DisplayMessage {
 pub enum LocalMessage {
     Keyboard(Event),
     Network(String, SocketAddr),
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct Settings {
+    pub uname: String,
+    pub passwd: String,
+    pub pfp: String,
+    pub sync_ip: String,
+    pub sync_port: u16,
+    pub theme: String,
+    pub sidebar_width: usize,
 }
 
 async fn init_server_from_syncserver(
@@ -268,9 +279,9 @@ fn get_sync_details<W: Write>(
                     let passwd = prompt.get_str("Password").unwrap().to_owned();
 
                     // TODO this is a bit of a hack
-                    let PromptEvent::ButtonPressed(mode) = prompt_event.unwrap() else {
-                        unreachable!()
-                    };
+                    // wait is it (I changed it a bit)
+                    let PromptEvent::ButtonPressed(mode) = prompt_event.unwrap();
+
                     return Ok((
                         sync_ip,
                         sync_port,
@@ -304,6 +315,9 @@ fn load_settings(config: &serde_json::Value, sync_data: Option<SyncData>) -> Set
     let pfp = config["pfp"].as_str().unwrap().to_owned(); // unwrap ok: json will always contain default pfp, even if none in file
     let sync_ip = config["sync_ip"].as_str().unwrap().to_owned(); // unwrap ok: json will always contain default sync_ip, even if none in file
     let sync_port = config["sync_port"].as_u64().unwrap() as u16; // unwrap ok: json will always contain default sync_port, even if none in file
+
+    let theme = config["theme"].as_str().unwrap_or("default").to_string();
+    let sidebar_width = config["sidebar_width"].as_u64().unwrap_or(32) as usize;
     if let Some(sync_data) = sync_data {
         Settings {
             uname: sync_data.uname,
@@ -311,6 +325,8 @@ fn load_settings(config: &serde_json::Value, sync_data: Option<SyncData>) -> Set
             pfp: sync_data.pfp,
             sync_ip,
             sync_port,
+            theme,
+            sidebar_width,
         }
     } else {
         let uname = config["uname"].as_str().unwrap().to_owned(); // yea i think this unwrap is O.K. rn
@@ -321,6 +337,8 @@ fn load_settings(config: &serde_json::Value, sync_data: Option<SyncData>) -> Set
             pfp,
             sync_ip,
             sync_port,
+            theme,
+            sidebar_width,
         }
     }
 }
@@ -350,7 +368,7 @@ async fn main() {
     let mut screen = termion::input::MouseTerminal::from(stdout().into_raw_mode().unwrap());
     let mut conf = load_config_json();
 
-    let (sync_data, sync_servers) = loop {
+    let (sync_data, _sync_servers) = loop {
         let Ok((sync_ip, sync_port, uname, passwd, auth)) = get_sync_details(&conf, &mut screen)
         else {
             return; // quit because the only error state is if the user decides to exit
@@ -410,6 +428,7 @@ async fn main() {
         match rx.recv().unwrap() {
             LocalMessage::Keyboard(key) => {
                 if !gui.handle_keyboard(key).await {
+                    drop(screen);
                     gui.save_config();
                     cancel_tx.send(());
                     return;
@@ -423,7 +442,7 @@ async fn main() {
                     Ok(obj) => {
                         let response: Response = serde_json::from_value(obj).unwrap();
                         // for formatting the messages
-                        let max_message_width = width as usize - gui.theme.left_margin - 4; // TODO why 4???
+                        let max_message_width = width as usize - gui.theme.sidebar_width - 4; // TODO why 4???
                         let we_are_the_selected_server = gui.curr_server.is_some_and(|idx| {
                             gui.servers[idx]
                                 .network
@@ -437,7 +456,7 @@ async fn main() {
                                 response,
                                 max_message_width,
                                 last_interacted.elapsed().expect("Could not get the time"),
-                                we_are_the_selected_server
+                                we_are_the_selected_server,
                             )
                             .await
                         {

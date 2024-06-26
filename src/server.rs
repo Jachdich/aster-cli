@@ -199,6 +199,24 @@ impl OnlineServer {
     pub fn get_channel(&self, uuid: i64) -> Option<&Channel> {
         self.channels.iter().find(|c| c.uuid == uuid)
     }
+
+    pub async fn switch_channel(&mut self, idx: usize) {
+        self.loaded_messages.clear();
+        self.curr_channel = Some(idx);
+        let channel = self.channels[idx].uuid;
+        let res = self
+            .write_half
+            .write_request(api::Request::HistoryRequest {
+                num: 100,
+                channel,
+                before_message: None,
+            })
+            .await;
+        if let Err(_) = res {
+            // *s = (*s).to_offline(e.to_string());
+            // TODO make the server offline
+        }
+    }
 }
 
 impl Server {
@@ -327,15 +345,14 @@ impl Server {
         match response {
             GetMetadataResponse { data, .. } => {
                 for elem in data.unwrap() {
-                    let peer_uuid = elem.uuid;
                     let peer = Peer::from_user(elem);
-                    if self.uuid.is_some_and(|uuid| uuid == peer_uuid) {
+                    if self.uuid.is_some_and(|uuid| uuid == peer.uuid) {
                         // info about ourselves that we may not know yet!
                         if self.uname.is_none() {
                             self.uname = Some(peer.name.clone());
                         }
                     }
-                    net.peers.insert(peer_uuid, peer);
+                    net.peers.insert(peer.uuid, peer);
                 }
             }
             RegisterResponse { uuid: new_uuid, .. } => self.uuid = Some(new_uuid.unwrap()),

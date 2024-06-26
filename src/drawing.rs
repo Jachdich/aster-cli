@@ -1,7 +1,6 @@
 use crate::gui::GUI;
-use crate::Mode;
-use fmtstring::{Colour, FmtChar, FmtString};
-use std::collections::HashMap;
+use crate::{Focus, Mode};
+use fmtstring::{Colour, FmtChar};
 use std::fmt;
 use std::io::Write;
 
@@ -119,7 +118,7 @@ pub struct Theme {
     pub edit: ThemedArea,
     pub messages: ThemedArea,
     pub status: ThemedArea,
-    pub left_margin: usize,
+    pub sidebar_width: usize,
 }
 
 fn get_or<'a>(
@@ -222,14 +221,28 @@ impl Theme {
         let messages = ThemedArea::new(&totalcfg["messages"], &totalcfg["global"]);
         let status = ThemedArea::new(&totalcfg["status"], &totalcfg["global"]);
 
+        let sidebar_width = 32;
+
         Ok(Theme {
-            left_margin: 32,
+            sidebar_width,
             servers,
             channels,
             edit,
             messages,
             status,
         })
+    }
+
+    pub fn get_left_margin(&self) -> usize {
+        self.sidebar_width
+            + u16::max(
+                self.servers.border.left.width(),
+                self.channels.border.right.width(),
+            ) as usize
+            + u16::max(
+                self.servers.border.right.width(),
+                self.channels.border.right.width(),
+            ) as usize
     }
 
     pub fn get_list_height(&self, height: u16) -> usize {
@@ -294,16 +307,20 @@ impl GUI {
                     write!(
                         screen,
                         "{}{}{}{}{}{}{}{}",
-                        termion::cursor::Goto(1 + self.theme.servers.border.left.width(), vert_pos),
+                        termion::cursor::Goto(1 + self.theme.channels.border.left.width(), vert_pos),
                         termion::color::Fg(termion::color::Reset),
                         termion::color::Bg(termion::color::Reset),
                         if net.curr_channel.is_some_and(|cc| idx == cc) {
-                            self.theme.servers.selected_text.clone()
+                            if self.focus == Focus::ChannelList {
+                                &self.theme.channels.selected_text
+                            } else {
+                                &self.theme.channels.unfocussed_selected_text
+                            }
                         } else {
-                            self.theme.servers.text.clone()
+                            &self.theme.channels.text
                         },
                         channel.name,
-                        " ".repeat(self.theme.left_margin - channel.name.len()),
+                        " ".repeat(self.theme.sidebar_width - channel.name.len()),
                         termion::color::Bg(termion::color::Reset),
                         termion::color::Fg(termion::color::Reset),
                     )
@@ -320,7 +337,7 @@ impl GUI {
                 screen,
                 "{}{}",
                 termion::cursor::Goto(1 + self.theme.servers.border.left.width(), vert_pos),
-                " ".repeat(self.theme.left_margin),
+                " ".repeat(self.theme.sidebar_width),
             )
             .unwrap();
             vert_pos += 1;
@@ -338,14 +355,18 @@ impl GUI {
                 termion::color::Fg(termion::color::Reset),
                 termion::color::Bg(termion::color::Reset),
                 if Some(idx) == self.curr_server {
-                    self.theme.servers.selected_text.clone()
+                    if self.focus == Focus::ServerList {
+                        &self.theme.servers.selected_text
+                    } else {
+                        &self.theme.servers.unfocussed_selected_text
+                    }
                 } else if !server.is_online() {
-                    self.theme.servers.error_text.clone()
+                    &self.theme.servers.error_text
                 } else {
-                    self.theme.servers.text.clone()
+                    &self.theme.servers.text
                 },
                 display_name,
-                " ".repeat(self.theme.left_margin - display_name.len()),
+                " ".repeat(self.theme.sidebar_width - display_name.len()),
                 termion::color::Fg(termion::color::Reset),
                 termion::color::Bg(termion::color::Reset),
             )
@@ -389,7 +410,16 @@ impl GUI {
             self.scroll = 0 - start_idx as isize;
         }
 
-        let max_chars: usize = self.width as usize - self.theme.left_margin - 4;
+        let max_chars: usize = self.width as usize
+            - self.theme.get_left_margin()
+            - self.theme.messages.border.left.width() as usize
+            - self.theme.messages.border.right.width() as usize
+            - 1; // 1 space of padding on the left
+
+        // + 1 because zero-based indexing
+        // + 1 because 1 space of padding on the left
+        let message_start_x = self.theme.get_left_margin() as u16 + 1 + 1;
+
         let max_lines = height - 2;
         let total_lines = messages
             [(start_idx as isize + self.scroll) as usize..(len as isize + self.scroll) as usize]
@@ -412,14 +442,7 @@ impl GUI {
                 }
 
                 buffer.push_str(
-                    &termion::cursor::Goto(
-                        self.theme.left_margin as u16
-                            + self.theme.servers.border.left.width()
-                            + self.theme.servers.border.right.width()
-                            + 2,
-                        height - line - 1,
-                    )
-                    .to_string(),
+                    &termion::cursor::Goto(message_start_x, height - line - 1).to_string(),
                 );
                 buffer.push_str(&message.lines[i].to_str());
                 buffer.push_str(&" ".repeat(max_chars - message.lines[i].len()));
@@ -432,10 +455,7 @@ impl GUI {
         while line > total_lines as u16 {
             buffer.push_str(
                 &termion::cursor::Goto(
-                    self.theme.left_margin as u16
-                        + self.theme.servers.border.left.width()
-                        + self.theme.servers.border.right.width()
-                        + 2,
+                    message_start_x,
                     height - line - 1,
                 )
                 .to_string(),
@@ -456,16 +476,19 @@ impl GUI {
     pub fn draw_status_line<W: Write>(&self, screen: &mut W) {
         write!(
             screen,
-            "{}{}{}",
+            "{}{}{}{}{}{}",
             termion::cursor::Goto(1, self.height),
-            termion::clear::CurrentLine,
-            self.system_message.to_optimised_string()
+            self.theme.status.system_message,
+            self.system_message,
+            " ".repeat(self.width as usize - self.system_message.len()),
+            termion::color::Bg(termion::color::Reset),
+            termion::color::Fg(termion::color::Reset),
         )
         .unwrap();
     }
 
     pub fn draw_input_buffer<W: Write>(&self, screen: &mut W) -> (u16, u16) {
-        let begin_x = self.theme.left_margin as u16
+        let begin_x = self.theme.sidebar_width as u16
             + self.theme.servers.border.left.width()
             + self.theme.servers.border.right.width()
             + 2; // ?
@@ -530,7 +553,7 @@ impl GUI {
         let y = self.height - self.prompt.as_ref().unwrap().height() - 1;
         self.prompt.as_ref().unwrap().draw(
             screen,
-            self.theme.left_margin as u16 + 4,
+            self.theme.sidebar_width as u16 + 4,
             y,
             &self.theme,
         );
@@ -553,7 +576,7 @@ impl GUI {
                     screen,
                     "{}",
                     termion::cursor::Goto(
-                        self.theme.left_margin as u16
+                        self.theme.sidebar_width as u16
                             + self.theme.servers.border.left.width()
                             + self.theme.servers.border.right.width()
                             + 2
@@ -580,7 +603,7 @@ pub fn draw_border(theme: &Theme) -> String {
     let channels_height = theme.get_channels_height(height);
     let servers_height = theme.get_servers_height(height);
 
-    let left_margin = theme.left_margin;
+    let left_margin = theme.sidebar_width;
 
     let total_border_width = (theme.servers.border.left.width()
         + theme.servers.border.right.width()
@@ -590,7 +613,7 @@ pub fn draw_border(theme: &Theme) -> String {
     let rs = termion::color::Fg(termion::color::Reset).to_string()
         + (&termion::color::Bg(termion::color::Reset).to_string());
 
-    format!("{0}{1}{sttl}{2}{3}\r\n{stleft}{4}{stright}{mleft}{space_padding}{mright}\r\n{stleft}{5}{stright}{mleft}{space_padding}{mright}\r\n{6}{7}{8}{9}{sbl}{10}{11}",
+    format!("{0}{1}{sttl}{2}{3}\r\n{stleft}{rs}{4}{stright}{mleft}{space_padding}{mright}\r\n{stleft}{rs}{5}{stright}{mleft}{space_padding}{mright}\r\n{6}{7}{8}{9}{sbl}{10}{11}",
 /*0*/       termion::cursor::Goto(1, 1),
 /*1*/       "",
 /*2*/       border_rep(&theme.status.border.top, left_margin),
@@ -614,7 +637,7 @@ pub fn draw_border(theme: &Theme) -> String {
 
 /*4*/       centred("Connected to", left_margin),
 
-/*5*/       centred("cospox.com", theme.left_margin),
+/*5*/       centred("cospox.com", theme.sidebar_width),
 
 /*6*/       if theme.channels.border.bottom.width() > 0 {
             format!("{stleft_split}{}{stright_split}{mleft}{}{mright}\r\n",
@@ -675,7 +698,7 @@ pub fn draw_border(theme: &Theme) -> String {
         },
 
 /*9*/       format!("{sleft}{rs}{}{sright}{rs}{mleft}{}{mright}\r\n", 
-            " ".repeat(theme.left_margin), 
+            " ".repeat(theme.sidebar_width), 
             space_padding,
             rs = rs,
             sleft = theme.servers.border.left,
@@ -718,6 +741,7 @@ pub fn draw_border(theme: &Theme) -> String {
         //cright = theme.channels.border.right,
         stright = theme.status.border.right,
         mleft = theme.messages.border.left,
+        rs = rs,
         //mbr = theme.messages.border.br,
         //mtr = theme.messages.border.tr,
     )

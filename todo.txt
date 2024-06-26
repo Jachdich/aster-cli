@@ -12,17 +12,17 @@ features:
 	- clickable links
 	- cache things like nick changes on offline servers to send when they're back online
 	- try to reconnect to offline servers periodically
+	- ping online servers periodically
 	- server folders
-	- current alt key combos are kinda bad
+	- current alt key combos are kinda bad (show what is currently selected?)
 	- servers & channels scroll
 	- store "last modified at" tags with settings (both locally and on the server) to choose the newest one
 	- make it easier to switch accounts on servers if you logged in with a different one previously
-	- notifications
 	- ctrl+arrows for faster navigation, plus ctrl+backspace
 	- better keybinds/system for navigating around different menus
-	- ted says they cant delete as they type??
 	- windows support maybe...
 	- put on crates.io
+	- suggestions + tab completion for builtin commands like /join
 code:
 	- figure out what to do when write causes an error
 	- migrate away from using raw json as much as possible
@@ -36,6 +36,7 @@ tentatively done:
 	- config file
 	- sync server support
 done:
+	- notifications
 	- multi line editing
 	- ask for & save username
 	- pressing backspace in the prompt buffer does not remove the character from the screen

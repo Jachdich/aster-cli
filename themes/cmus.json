@@ -5,12 +5,12 @@
     "selected-text-background": "blue",
     "selected-text-foreground": "light yellow",
     "unfocussed-selected-text-background": "white",
-    "unfocussed-selected-text-foreground": "light yellow",
+    "unfocussed-selected-text-foreground": "black",
     "error-text-foreground": "reset",
     "error-text-background": "red",
 
-    "system-message-foreground": "light green",
-    "system-message-background": "reset",
+    "system-message-foreground": "black",
+    "system-message-background": "white",
     
     "border-tl":           ["", "reset", "blue"],
     "border-top":          [" ", "reset", "blue"],
@@ -37,7 +37,12 @@
 },
 
 "channels": {
-    "border-bottom": ["", "reset", "reset"]
+    "border-bottom": ["─", "blue", "reset"],
+    "border-right": ["│", "blue", "reset"]
+},
+
+"status": {
+    "border-right": ["│", "blue", "reset"]
 }
 
 }

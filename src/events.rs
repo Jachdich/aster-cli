@@ -1,6 +1,5 @@
 use super::Focus;
 use super::Mode;
-use crate::api;
 use crate::gui::GUI;
 use crate::prompt::EditBuffer;
 use crate::prompt::PromptEvent;
@@ -67,27 +66,6 @@ impl GUI {
             Event::Mouse(MouseEvent::Press(MouseButton::WheelDown, _, _)) => {
                 self.scroll += 1;
             }
-
-            Event::Mouse(MouseEvent::Press(MouseButton::Left, x, y)) => {
-                if x < self.theme.left_margin as u16 + self.theme.channels.border.left.width() // ??
-                    && x > self.theme.channels.border.left.width()
-                    && y >= self.theme.get_servers_start_pos() as u16
-                    && y < self.theme.get_channels_start_pos(self.height) as u16 - 1
-                {
-                    let idx = y as usize - self.theme.get_servers_start_pos();
-                    self.send_system(idx.to_string().as_str());
-                    let Some(curr_server) = self.curr_server.map(|idx| &mut self.servers[idx])
-                    else {
-                        return ();
-                    };
-                    let reload = if let Ok(ref net) = curr_server.network {
-                        idx < net.channels.len() && !net.curr_channel.is_some_and(|c| c == idx)
-                    } else {
-                        false
-                    };
-                }
-            }
-
             _ => (),
         }
     }
@@ -118,55 +96,71 @@ impl GUI {
             return;
         };
         let s = &mut self.servers[curr_server];
-        if let Ok(ref mut net) = s.network {
-            let reload = match event {
-                Event::Key(Key::Up) => {
-                    if net.curr_channel.is_some_and(|x| x > 0) {
-                        *net.curr_channel.as_mut().unwrap() -= 1;
-                        true
-                    } else {
-                        false
-                    }
-                }
-
-                Event::Key(Key::Down) => {
-                    if net.curr_channel.is_some_and(|x| x < net.channels.len() - 1) {
-                        *net.curr_channel.as_mut().unwrap() += 1;
-                        true
-                    } else if net.curr_channel.is_none() && net.channels.len() > 0 {
-                        net.curr_channel = Some(0);
-                        true
-                    } else {
-                        false
-                    }
-                }
-                _ => false,
-            };
-
-            if reload {
-                net.loaded_messages.clear();
-                let channel = net.channels[net.curr_channel.unwrap()].uuid;
-                let res = net
-                    .write_half
-                    .write_request(api::Request::HistoryRequest {
-                        num: 100,
-                        channel,
-                        before_message: None,
-                    })
-                    .await;
-                if let Err(_) = res {
-                    // *s = (*s).to_offline(e.to_string());
-                    // TODO make the server offline
+        let net = s
+            .network
+            .as_mut()
+            .expect("Offline server somehow changed their channel");
+        let switching_channel = match event {
+            Event::Key(Key::Up) => {
+                if net.curr_channel.is_some_and(|x| x > 0) {
+                    Some(net.curr_channel.unwrap() - 1)
+                } else {
+                    None
                 }
             }
-        } else {
-            panic!("Offline server somehow changed their chanel")
+
+            Event::Key(Key::Down) => {
+                if net.curr_channel.is_some_and(|x| x < net.channels.len() - 1) {
+                    Some(net.curr_channel.unwrap() + 1)
+                } else if net.curr_channel.is_none() && net.channels.len() > 0 {
+                    Some(0)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        };
+
+        if let Some(idx) = switching_channel {
+            net.switch_channel(idx).await;
         }
-        // unsafe {
-        //     let server_ptr = &mut self.servers[curr_server] as *mut Server;
-        //     let new_server = (*server_ptr).to_offline("a".into());
-        // }
-        // self.servers[curr_server] = self.servers[curr_server].to_offline("a".to_string());
+    }
+
+    pub async fn focus_any_event(&mut self, event: Event) {
+        match event {
+            Event::Mouse(MouseEvent::Press(MouseButton::Left, x, y)) => {
+                if x >= self.theme.sidebar_width as u16
+                    + self.theme.channels.border.left.width()
+                    + self.theme.channels.border.right.width()
+                    || x <= self.theme.channels.border.left.width()
+                {
+                    return;
+                }
+
+                if y >= self.theme.get_servers_start_pos() as u16
+                    && y < self.theme.get_channels_start_pos(self.height) as u16 - 1
+                {
+                    let idx = y as usize - self.theme.get_servers_start_pos();
+                    let Some(curr_server) = self.curr_server.map(|idx| &mut self.servers[idx])
+                    else {
+                        return ();
+                    };
+                    if let Ok(ref mut net) = curr_server.network {
+                        if idx < net.channels.len() && !net.curr_channel.is_some_and(|c| c == idx) {
+                            net.switch_channel(idx).await;
+                        }
+                    }
+                } else if y >= self.theme.get_channels_start_pos(self.height) as u16
+                    && y < self.height - self.theme.servers.border.bottom.width()
+                {
+                    let idx = y as usize - self.theme.get_channels_start_pos(self.height);
+                    if idx < self.servers.len() {
+                        self.curr_server = Some(idx);
+                    }
+                }
+            }
+            _ => (),
+        }
     }
 
     pub async fn handle_keyboard(&mut self, key: Event) -> bool {
@@ -191,6 +185,7 @@ impl GUI {
                 Focus::ChannelList => self.focus_channels_event(key.clone()).await,
                 Focus::Messages => (),
             }
+            self.focus_any_event(key.clone()).await;
         } else if self.mode == Mode::NewServer {
             let p = self.prompt.as_mut().unwrap();
             match p.handle_event(key) {
