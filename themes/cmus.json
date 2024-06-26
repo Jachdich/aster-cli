@@ -23,7 +23,7 @@
     "border-bottom-split": [" ", "reset", "blue"],
     "border-top-split":    [" ", "reset", "blue"],
     "border-left-split":   ["", "reset", "blue"],
-    "border-right-split":  ["│", "blue", "reset"]
+    "border-right-split":  ["┤", "blue", "reset"]
 },
 
 "servers": {

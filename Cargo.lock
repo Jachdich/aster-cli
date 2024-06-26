@@ -156,6 +156,7 @@ dependencies = [
  "image",
  "native-tls",
  "notify-rust",
+ "once_cell",
  "regex",
  "serde",
  "serde_json",

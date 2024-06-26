@@ -23,6 +23,8 @@ features:
 	- windows support maybe...
 	- put on crates.io
 	- suggestions + tab completion for builtin commands like /join
+	- actually set & use sync data
+	- support multi line editing with shift+enter
 code:
 	- figure out what to do when write causes an error
 	- migrate away from using raw json as much as possible
@@ -30,12 +32,12 @@ code:
 	- prompt: max_width
 	- rewrite the message rendering code to be better
 in progress:
-	- mouse support (servers, channels, etc)
 	- figure out a more elegant way to represent servers
 tentatively done:
 	- config file
 	- sync server support
 done:
+	- mouse support (servers, channels)
 	- notifications
 	- multi line editing
 	- ask for & save username

@@ -1,8 +1,17 @@
 use crate::gui::GUI;
 use crate::{Focus, Mode};
 use fmtstring::{Colour, FmtChar};
+use once_cell::sync::Lazy;
+use std::collections::HashMap;
 use std::fmt;
 use std::io::Write;
+
+static BUILTIN_THEMES: Lazy<HashMap<&'static str, &'static str>> = Lazy::new(|| {
+    let mut m = HashMap::new();
+    m.insert("default", include_str!("../themes/default.json"));
+    m.insert("cmus", include_str!("../themes/cmus.json"));
+    m
+});
 
 fn centred(text: &str, width: usize) -> String {
     format!("{: ^1$}", text, width)
@@ -208,12 +217,14 @@ impl ThemedArea {
 }
 
 impl Theme {
-    pub fn new(filename: &str) -> std::result::Result<Self, Box<dyn std::error::Error>> {
-        let totalcfg: serde_json::Value = if filename == "themes/default.json" {
-            serde_json::from_str(include_str!("../themes/default.json"))?
+    pub fn new(name: &str) -> std::result::Result<Self, Box<dyn std::error::Error>> {
+        let file_contents = if let Some(c) = BUILTIN_THEMES.get(name) {
+            *c
         } else {
-            serde_json::from_str(&std::fs::read_to_string(filename)?)?
+            &std::fs::read_to_string(format!("themes/{}.json", name))?
         };
+
+        let totalcfg: serde_json::Value = serde_json::from_str(file_contents)?;
 
         let servers = ThemedArea::new(&totalcfg["servers"], &totalcfg["global"]);
         let channels = ThemedArea::new(&totalcfg["channels"], &totalcfg["global"]);
@@ -307,7 +318,10 @@ impl GUI {
                     write!(
                         screen,
                         "{}{}{}{}{}{}{}{}",
-                        termion::cursor::Goto(1 + self.theme.channels.border.left.width(), vert_pos),
+                        termion::cursor::Goto(
+                            1 + self.theme.channels.border.left.width(),
+                            vert_pos
+                        ),
                         termion::color::Fg(termion::color::Reset),
                         termion::color::Bg(termion::color::Reset),
                         if net.curr_channel.is_some_and(|cc| idx == cc) {
@@ -453,13 +467,7 @@ impl GUI {
         let spaces = " ".repeat(max_chars);
         line = max_lines - 1;
         while line > total_lines as u16 {
-            buffer.push_str(
-                &termion::cursor::Goto(
-                    message_start_x,
-                    height - line - 1,
-                )
-                .to_string(),
-            );
+            buffer.push_str(&termion::cursor::Goto(message_start_x, height - line - 1).to_string());
             buffer.push_str(&spaces);
             line -= 1;
         }

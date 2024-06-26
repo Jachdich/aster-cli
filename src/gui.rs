@@ -48,7 +48,7 @@ impl GUI {
             curr_server: None,
             mode: Mode::Messages,
             focus: Focus::Edit,
-            theme: Theme::new("themes/default.json").unwrap(),
+            theme: Theme::new(&settings.theme).unwrap(),
             system_message: "".into(),
 
             prompt: None,
@@ -122,9 +122,10 @@ impl GUI {
                     self.send_system("Expected exactly one argument");
                 }
 
-                match Theme::new(&format!("themes/{}.json", argv[1])) {
+                match Theme::new(&argv[1]) {
                     Ok(theme) => {
                         self.theme = theme;
+                        self.settings.theme = argv[1].to_owned();
                         self.send_system(&format!("Changed theme to {}", argv[1]));
                         // all of these potentially need drawing
                         // self.draw_border();
