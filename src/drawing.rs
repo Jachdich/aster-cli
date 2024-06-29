@@ -218,13 +218,14 @@ impl ThemedArea {
 
 impl Theme {
     pub fn new(name: &str) -> std::result::Result<Self, Box<dyn std::error::Error>> {
+        // TODO when rust 1.79 becomes old enough, we can drop this .to_owned() and borrow the std::fs::read
         let file_contents = if let Some(c) = BUILTIN_THEMES.get(name) {
-            *c
+            (*c).to_owned()
         } else {
-            &std::fs::read_to_string(format!("themes/{}.json", name))?
+            std::fs::read_to_string(format!("themes/{}.json", name))?
         };
 
-        let totalcfg: serde_json::Value = serde_json::from_str(file_contents)?;
+        let totalcfg: serde_json::Value = serde_json::from_str(&file_contents)?;
 
         let servers = ThemedArea::new(&totalcfg["servers"], &totalcfg["global"]);
         let channels = ThemedArea::new(&totalcfg["channels"], &totalcfg["global"]);

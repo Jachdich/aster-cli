@@ -1,12 +1,14 @@
 bugs:
+	- multi line messages don't get rebuilt upon resizing the window
 	- pressing tab in edit mode messes up the border
-	- servers don't get highlighted
 	- unicode characters like ✅ still cause a crash if they're c h o n k
 	- also ✅ causes the border to get eaten away because its width is incorrectly calculated (maybe a terminal issue?)
-	- multi line messages don't get rebuilt upon resizing the window
 features:
 	- passwords
+	- actually set & use sync data
 	- changing pfp, nickname, username (across all servers)
+	- try to reconnect to offline servers periodically
+	- ping online servers periodically
 	- images
 	- markdown
 	- clickable links
@@ -17,22 +19,23 @@ features:
 	- future: when editing/deleting, use arrows to navigate and select the message, then a command to edit/delete
 	- current alt key combos are kinda bad (show what is currently selected?)
 	- servers & channels scroll
+	- current alt key combos are kinda bad
 	- store "last modified at" tags with settings (both locally and on the server) to choose the newest one
 	- make it easier to switch accounts on servers if you logged in with a different one previously
 	- set per-server nicknames
 	- ctrl+arrows for faster navigation, plus ctrl+backspace
 	- better keybinds/system for navigating around different menus
+	- suggestions + tab completion for builtin commands like /join
+	- support multi line editing with shift+enter
+	- server folders
 	- windows support maybe...
 	- put on crates.io
-	- suggestions + tab completion for builtin commands like /join
-	- actually set & use sync data
-	- support multi line editing with shift+enter
 code:
 	- figure out what to do when write causes an error
-	- migrate away from using raw json as much as possible
 	- clean up the theme system
-	- prompt: max_width
 	- rewrite the message rendering code to be better
+	- prompt: max_width
+	- migrate away from using raw json as much as possible
 in progress:
 	- figure out a more elegant way to represent servers
 tentatively done:
@@ -47,3 +50,4 @@ done:
 	- fix crash on unicode characters being typed in an edit buffer
 	- support multiple line messages rendering
 	- probably best to store messages as a list of ready-formatted lines instead of calculating them each time
+	- servers don't get highlighted
