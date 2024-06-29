@@ -14,10 +14,12 @@ features:
 	- try to reconnect to offline servers periodically
 	- ping online servers periodically
 	- server folders
+	- future: when editing/deleting, use arrows to navigate and select the message, then a command to edit/delete
 	- current alt key combos are kinda bad (show what is currently selected?)
 	- servers & channels scroll
 	- store "last modified at" tags with settings (both locally and on the server) to choose the newest one
 	- make it easier to switch accounts on servers if you logged in with a different one previously
+	- set per-server nicknames
 	- ctrl+arrows for faster navigation, plus ctrl+backspace
 	- better keybinds/system for navigating around different menus
 	- windows support maybe...
