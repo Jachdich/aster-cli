@@ -5,7 +5,9 @@ bugs:
 	- scrolling doesn't actually scroll all the way to the top
 	- with some widths, the server list click detection is off by one and it doesn't display the top border
 	- gracefully handle when connection is shut down (currently it keeps redrawing the screen endlessly)
-	- I think it doesn't handle the sync server being offline very well
+	- I think it doesn't handle the sync server being offline very well (just allows you to connect anyway??
+	- quitting forcably (ctrl+c) before the name or other info has loaded can cause the config file to have null in it that causes it to crash (basically, use cached data *before* fetching new data)
+	- adding two of the same server causes problems
 features:
     - show "edited" tag by edited messages
 	- passwords

@@ -1,6 +1,3 @@
-extern crate dirs;
-extern crate termion;
-extern crate tokio;
 mod api;
 
 use crate::api::Response;
@@ -68,19 +65,20 @@ async fn init_server_from_syncserver(
     tx: &std::sync::mpsc::Sender<LocalMessage>,
     cancel: &broadcast::Sender<()>,
 ) -> Option<Server> {
+    let id = if let Some(uuid) = serv.uuid {
+        crate::server::Identification::Uuid(uuid)
+    } else {
+        crate::server::Identification::Username(serv.uname.clone())
+    };
     let mut conn = Server::new(
         serv.ip.clone(),
         serv.port as u16,
+        id.clone(),
         tx.clone(),
         cancel.subscribe(),
     )
     .await;
     if conn.is_online() {
-        let id = if let Some(uuid) = serv.uuid {
-            crate::server::Identification::Uuid(uuid)
-        } else {
-            crate::server::Identification::Username(serv.uname.clone())
-        };
         match conn.network.as_mut().unwrap().initialise(id).await {
             Ok(()) => (),
             Err(e) => conn.to_offline(e.to_string()),

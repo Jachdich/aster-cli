@@ -148,7 +148,7 @@ impl GUI {
                     } else {
                         (argv[1], self.settings.uname.as_str())
                     };
-                    let (port, ip) = if let Some((port, ip)) = rest.rsplit_once(':') {
+                    let (port, ip) = if let Some((ip, port)) = rest.rsplit_once(':') {
                         (
                             port.parse::<u16>().map_err(|_| {
                                 CommandError("Unable to parse port number".to_owned())
@@ -189,7 +189,7 @@ impl GUI {
     }
 
     pub async fn connect_to_server(&mut self, ip: String, port: u16, id: Identification) {
-        let mut conn = Server::new(ip, port, self.tx.clone(), self.cancel.subscribe()).await;
+        let mut conn = Server::new(ip, port, id.clone(), self.tx.clone(), self.cancel.subscribe()).await;
         if let Ok(ref mut net) = conn.network {
             net.initialise(id).await.unwrap();
         }

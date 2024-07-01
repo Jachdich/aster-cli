@@ -12,6 +12,7 @@ pub enum Status {
     Forbidden = 403,
     NotFound = 404,
     MethodNotAllowed = 405,
+    Conflict = 409,
 }
 
 impl Status {
@@ -24,6 +25,7 @@ impl Status {
             Status::Forbidden => "Forbidden",
             Status::NotFound => "Not Found",
             Status::MethodNotAllowed => "Method Not Allowed",
+            Status::Conflict => "Conflict",
         }
         .to_owned()
     }
@@ -54,7 +56,7 @@ pub struct SyncData {
     pub pfp: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 pub struct User {
     pub uuid: i64,
     pub name: String,

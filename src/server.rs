@@ -1,8 +1,5 @@
-extern crate termion;
-extern crate tokio;
-
 use crate::api::{self, Channel, Request, Response, User};
-use crate::tokio::io::{AsyncBufReadExt, AsyncWriteExt};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 use crate::LocalMessage;
 use base64::prelude::*;
 use fmtstring::FmtString;
@@ -151,6 +148,7 @@ impl Serialize for Server {
     }
 }
 
+#[derive(Clone)]
 pub enum Identification {
     Username(String),
     Uuid(i64),
@@ -180,7 +178,7 @@ impl OnlineServer {
                 self.write_half
                     .write_request(LoginRequest {
                         passwd: "a".into(),
-                        uname: Some(username.clone()),
+                        uname: Some(username),
                         uuid: None,
                     })
                     .await?;
@@ -188,6 +186,7 @@ impl OnlineServer {
             }
         }
     }
+
     async fn post_init(&mut self) -> Result<(), std::io::Error> {
         use Request::*;
         self.write_half.write_request(GetIconRequest).await?;
@@ -228,6 +227,7 @@ impl Server {
     pub async fn new(
         ip: String,
         port: u16,
+        id: Identification,
         tx: Sender<LocalMessage>,
         mut cancel: Receiver<()>,
     ) -> Self {
@@ -262,12 +262,17 @@ impl Server {
             Err(e) => Err(format!("Failed to connect: {:?}", e)),
         };
 
+        let (uname, uuid) = match id {
+            Identification::Username(uname) => (Some(uname), None),
+            Identification::Uuid(uuid) => (None, Some(uuid)),
+        };
+
         Self {
             ip,
             port,
             name: None,
-            uuid: None,
-            uname: None,
+            uuid,
+            uname,
             network,
         }
     }
@@ -347,6 +352,7 @@ impl Server {
             .network
             .as_mut()
             .expect("Network packet recv'd for offline server??");
+        let res = Err(response.name().to_owned());
         match response {
             GetMetadataResponse { data, .. } => {
                 for elem in data.unwrap() {
@@ -360,7 +366,10 @@ impl Server {
                     net.peers.insert(peer.uuid, peer);
                 }
             }
-            RegisterResponse { uuid: new_uuid, .. } => self.uuid = Some(new_uuid.unwrap()),
+            RegisterResponse { uuid: new_uuid, status: Ok } => self.uuid = Some(new_uuid.unwrap()),
+            RegisterResponse { status: Conflict, .. } => {
+                return Err(format!("Cannot register with username '{}' as it is already in use", self.uname.as_ref().unwrap()));
+            }
             LoginResponse {
                 uuid: Some(new_uuid),
                 status: Ok,
@@ -474,6 +483,6 @@ impl Server {
                 }
             }
         }
-        Result::Ok(())
+        res
     }
 }
