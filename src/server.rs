@@ -78,6 +78,7 @@ impl Peer {
 
 pub struct LoadedMessage {
     pub lines: Vec<FmtString>,
+    pub message: api::Message,
 }
 
 pub struct OnlineServer {
@@ -100,36 +101,40 @@ pub struct Server {
 
 impl LoadedMessage {
     pub fn from_message(
-        msg: &api::Message,
+        message: api::Message,
         peers: &HashMap<i64, Peer>,
         width: usize,
     ) -> LoadedMessage {
+        let mut this = LoadedMessage { lines: Vec::new(), message };
+        this.rebuild(peers, width);
+        this
+    }
+
+    pub fn rebuild(&mut self, peers: &HashMap<i64, Peer>, width: usize) {
         let uname_str = peers
-            .get(&msg.author_uuid)
+            .get(&self.message.author_uuid)
             .map(|x| x.name.as_str())
             .unwrap_or("Unknown User");
-        let formatted = FmtString::from_str(&format!(" {}: {}", uname_str, msg.content));
+        let formatted = FmtString::from_str(&format!(" {}: {}", uname_str, self.message.content));
 
         let pfp = peers
-            .get(&msg.author_uuid)
+            .get(&self.message.author_uuid)
             .map(|x| x.pfp.clone())
             .unwrap_or(FmtString::from_str("  "));
 
         let left_margin = pfp.len() + 1;
-        let mut lines = vec![pfp];
+        self.lines = vec![pfp];
         for c in formatted.into_iter() {
             // unwraps are ok because we start with at least 1 element
-            let curr = lines.last().unwrap();
+            let curr = self.lines.last().unwrap();
             if c.ch == '\n' || curr.len() >= width - 1 {
-                lines.push(FmtString::from_str(&" ".repeat(left_margin)))
+                self.lines.push(FmtString::from_str(&" ".repeat(left_margin)))
             }
-            let curr = lines.last_mut().unwrap();
+            let curr = self.lines.last_mut().unwrap();
             if c.ch != '\n' {
                 curr.push(c);
             }
         }
-
-        LoadedMessage { lines }
     }
 }
 
@@ -322,7 +327,7 @@ impl Server {
     }
 
     fn format_message(
-        msg: &api::Message,
+        msg: api::Message,
         peers: &HashMap<i64, Peer>,
         message_width: usize,
     ) -> LoadedMessage {
@@ -401,17 +406,20 @@ impl Server {
                 let new_msgs = data
                     .unwrap()
                     .into_iter()
-                    .map(|message| Self::format_message(&message, &net.peers, message_width))
+                    .map(|message| Self::format_message(message, &net.peers, message_width))
                     .collect::<Vec<_>>(); // TODO get rid of this collect: borrow checker complains, tho
                 net.loaded_messages.extend(new_msgs);
             }
             ContentResponse { message, .. } => {
                 let in_current_channel = net
-                        .curr_channel
-                        .is_some_and(|c| net.channels[c].uuid == message.channel_uuid);
+                    .curr_channel
+                    .is_some_and(|c| net.channels[c].uuid == message.channel_uuid);
                 if in_current_channel {
-                    net.loaded_messages
-                        .push(Self::format_message(&message, &net.peers, message_width));
+                    net.loaded_messages.push(Self::format_message(
+                        message.clone(),
+                        &net.peers,
+                        message_width,
+                    ));
                 }
                 if !we_are_the_selected_server
                     || !in_current_channel
@@ -438,6 +446,22 @@ impl Server {
                         .unwrap();
                 }
             }
+
+            MessageEditedResponse {
+                status: Ok,
+                message,
+                new_content,
+            } => {
+                for msg in &mut net.loaded_messages {
+                    if msg.message.uuid == message {
+                        msg.message.content = new_content;
+                        msg.message.edited = true;
+                        msg.rebuild(&net.peers, message_width);
+                        break;
+                    }
+                }
+            }
+
             _ => {
                 if response.status() != Status::Ok {
                     return Err(format!(

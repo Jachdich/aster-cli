@@ -75,13 +75,15 @@ pub struct Channel {
     pub name: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 pub struct Message {
     pub uuid: i64,
     pub content: String,
     pub author_uuid: i64,
     pub channel_uuid: i64,
     pub date: i32,
+    #[serde(default)]
+    pub edited: bool,
 }
 
 #[derive(Serialize)]
@@ -108,6 +110,7 @@ pub enum Request {
     #[serde(rename = "sync_get_servers")] SyncGetServersRequest,
     #[serde(rename = "leave")]            LeaveRequest,
     #[serde(rename = "get_user")]         GetUserRequest { uuid: i64 },
+    #[serde(rename = "edit")]             EditRequest { message: i64, new_content: String },
 }
 
 #[derive(Deserialize)]
@@ -129,7 +132,9 @@ pub enum Response {
     #[serde(rename = "sync_get")]         SyncGetResponse        { status: Status, #[serde(flatten)] data: Option<SyncData> },
     #[serde(rename = "content")]          ContentResponse        { status: Status, #[serde(flatten)] message: Message },
     #[serde(rename = "API_version")]      APIVersion             { status: Status, version: [u8; 3] },
-    #[serde(rename = "send")]             SendResponse           { status: Status },
+    #[serde(rename = "send")]             SendResponse           { status: Status, message: i64, },
+    #[serde(rename = "edit")]             EditResponse           { status: Status },
+    #[serde(rename = "message_edited")]   MessageEditedResponse  { status: Status, message: i64, new_content: String },
 }
 
 impl Response {
@@ -154,6 +159,8 @@ impl Response {
             ContentResponse { status, .. } => status,
             APIVersion { status, .. } => status,
             SendResponse { status, .. } => status,
+            MessageEditedResponse { status, .. } => status,
+            EditResponse { status, .. } => status,
         }
     }
     pub fn name(&self) -> &'static str {
@@ -176,6 +183,8 @@ impl Response {
             ContentResponse { .. } => "ContentResponse",
             APIVersion { .. } => "APIVersion",
             SendResponse { .. } => "SendResponse",
+            MessageEditedResponse { .. } => "MessageEditedResponse",
+            EditResponse { .. } => "EditResponse",
         }
     }
 }

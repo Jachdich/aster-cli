@@ -426,6 +426,15 @@ async fn main() {
             let border = draw_border(&gui.theme);
             write!(screen, "{}", border).unwrap();
             last_theme = gui.settings.theme.clone();
+
+            // TODO kinda ugly
+            for server in &mut gui.servers {
+                let Ok(ref mut net) = server.network else { continue; };
+                let max_message_width = width as usize - gui.theme.sidebar_width - 4; // TODO why 4???
+                for message in &mut net.loaded_messages {
+                    message.rebuild(&net.peers, max_message_width);
+                }
+            }
         }
 
         gui.width = width;

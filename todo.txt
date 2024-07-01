@@ -1,14 +1,19 @@
 bugs:
-	- multi line messages don't get rebuilt upon resizing the window
 	- pressing tab in edit mode messes up the border
 	- unicode characters like ✅ still cause a crash if they're c h o n k
 	- also ✅ causes the border to get eaten away because its width is incorrectly calculated (maybe a terminal issue?)
+	- scrolling doesn't actually scroll all the way to the top
+	- with some widths, the server list click detection is off by one and it doesn't display the top border
+	- gracefully handle when connection is shut down (currently it keeps redrawing the screen endlessly)
+	- I think it doesn't handle the sync server being offline very well
 features:
+    - show "edited" tag by edited messages
 	- passwords
 	- actually set & use sync data
 	- changing pfp, nickname, username (across all servers)
 	- try to reconnect to offline servers periodically
 	- ping online servers periodically
+	- load more messages when you scroll to the top
 	- images
 	- markdown
 	- clickable links
@@ -38,10 +43,12 @@ code:
 	- migrate away from using raw json as much as possible
 in progress:
 	- figure out a more elegant way to represent servers
+	- editing messages (done: receive edit notifs, todo: select & edit messages)
 tentatively done:
 	- config file
 	- sync server support
 done:
+	- multi line messages don't get rebuilt upon resizing the window
 	- mouse support (servers, channels)
 	- notifications
 	- multi line editing
