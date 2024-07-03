@@ -7,6 +7,7 @@ use crate::server::Server;
 use api::{Status, SyncData, SyncServer};
 use drawing::Theme;
 use fmtstring::FmtString;
+use native_tls::TlsConnector;
 use serde::{Deserialize, Serialize};
 use server::WriteAsterRequest;
 use std::io::{stdin, stdout, BufRead, BufReader, Write};
@@ -47,6 +48,7 @@ pub enum DisplayMessage {
 pub enum LocalMessage {
     Keyboard(Event),
     Network(String, SocketAddr),
+    NetError(String),
 }
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -145,7 +147,16 @@ fn load_sync_data(
     passwd: &str,
     auth: AuthMode,
 ) -> Result<(Option<SyncData>, Vec<SyncServer>), std::io::Error> {
-    let mut conn = std::net::TcpStream::connect((ip, port))?;
+    let conn = std::net::TcpStream::connect((ip, port))?;
+
+    let cx = TlsConnector::builder()
+        .danger_accept_invalid_certs(true)
+        .build()
+        .expect("Couldn't initialise a TLS connection");
+
+    let mut conn = cx
+        .connect(ip, conn)
+        .expect("AAA TEST can't init tls connection");
 
     match auth {
         AuthMode::Login => conn.write_request(&api::Request::LoginRequest {
@@ -223,11 +234,13 @@ fn load_sync_data(
 fn get_sync_details<W: Write>(
     config: &serde_json::Value,
     screen: &mut W,
+    show_error: Option<&str>,
 ) -> Result<(String, u16, String, String, AuthMode), ()> {
     if config["uname"].is_null()
         || config["passwd"].is_null()
         || config["sync_ip"].is_null()
         || config["sync_port"].is_null()
+        || show_error.is_some()
     {
         let theme = Theme::new("default").unwrap(); // TODO get this from a legitimate source, rn its validity is questionable
 
@@ -264,6 +277,9 @@ fn get_sync_details<W: Write>(
         let x = (w - pw) / 2;
         let y = (h - ph) / 2;
         write!(screen, "{}", termion::clear::All).unwrap();
+        if let Some(err) = show_error {
+            write!(screen, "{}{}", termion::cursor::Goto(1, 1), err).unwrap();
+        }
         prompt.draw(screen, x, y, &theme);
         screen.flush().unwrap();
         let mut events = stdin().events();
@@ -287,7 +303,7 @@ fn get_sync_details<W: Write>(
                         sync_port,
                         uname,
                         passwd,
-                        if mode == "login" {
+                        if mode == "Login" {
                             AuthMode::Login
                         } else {
                             AuthMode::Register
@@ -368,9 +384,13 @@ async fn main() {
     let mut screen = termion::input::MouseTerminal::from(stdout().into_raw_mode().unwrap());
     let mut conf = load_config_json();
 
+    let mut show_error = None;
     let (sync_data, _sync_servers) = loop {
-        let Ok((sync_ip, sync_port, uname, passwd, auth)) = get_sync_details(&conf, &mut screen)
-        else {
+        let Ok((sync_ip, sync_port, uname, passwd, auth)) = get_sync_details(
+            &conf,
+            &mut screen,
+            show_error.as_ref().map(|s: &String| s.as_str()),
+        ) else {
             return; // quit because the only error state is if the user decides to exit
         };
 
@@ -383,11 +403,12 @@ async fn main() {
 
         match load_sync_data(&sync_ip, sync_port, &uname, &passwd, auth) {
             Ok((sync_data, sync_servers)) => break (sync_data, sync_servers),
-            Err(e) => println!(
-                "{}A network error occurred while logging in. Is the server offline? Details: {:?}",
-                termion::cursor::Goto(1, 1),
+            Err(e) => {
+                show_error = Some(format!(
+                "A network error occurred while logging in. Is the server offline? Details: {:?}",
                 e
-            ),
+            ))
+            }
         }
     };
 
@@ -427,7 +448,9 @@ async fn main() {
 
             // TODO kinda ugly
             for server in &mut gui.servers {
-                let Ok(ref mut net) = server.network else { continue; };
+                let Ok(ref mut net) = server.network else {
+                    continue;
+                };
                 let max_message_width = width as usize - gui.theme.sidebar_width - 4; // TODO why 4???
                 for message in &mut net.loaded_messages {
                     message.rebuild(&net.peers, max_message_width);
@@ -481,6 +504,9 @@ async fn main() {
                         //ignore for now
                     }
                 }
+            }
+            LocalMessage::NetError(e) => {
+                gui.send_system(&e);
             }
         }
         gui.draw_all(&mut screen);

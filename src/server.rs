@@ -1,8 +1,8 @@
 use crate::api::{self, Channel, Request, Response, User};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 use crate::LocalMessage;
 use base64::prelude::*;
 use fmtstring::FmtString;
+use native_tls::TlsConnector;
 use notify_rust::{Notification, Timeout};
 use serde::ser::{Serialize, SerializeStruct, Serializer};
 use std::collections::HashMap;
@@ -10,12 +10,13 @@ use std::io::Write;
 use std::net::SocketAddr;
 use std::sync::mpsc::Sender;
 use std::time::Duration;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 use tokio::io::{ReadHalf, WriteHalf};
 use tokio::net::TcpStream;
 use tokio::sync::broadcast::Receiver;
-// use tokio_native_tls::TlsStream;
+use tokio_native_tls::TlsStream;
 
-type SocketStream = TcpStream;
+type SocketStream = TlsStream<TcpStream>;
 
 pub trait WriteAsterRequestAsync {
     async fn write_request(&mut self, command: api::Request) -> Result<usize, std::io::Error>;
@@ -25,7 +26,7 @@ pub trait WriteAsterRequest {
     fn write_request(&mut self, command: &api::Request) -> Result<(), std::io::Error>;
 }
 
-impl WriteAsterRequest for std::net::TcpStream {
+impl WriteAsterRequest for native_tls::TlsStream<std::net::TcpStream> {
     fn write_request(&mut self, command: &api::Request) -> Result<(), std::io::Error> {
         write!(self, "{}\n", serde_json::to_string(command).unwrap())
     }
@@ -56,7 +57,6 @@ impl Peer {
             .resize_exact(14, 16, image::imageops::FilterType::Triangle)
             .into_rgb8();
 
-        // yea this requires unsafe, but it avoids a dependency, and is perfectly safe™ I think
         let pfp = dct_tiv::textify_dct(
             &img,
             &dct_tiv::DEFAULT_DCT_MATRICIES,
@@ -102,7 +102,10 @@ impl LoadedMessage {
         peers: &HashMap<i64, Peer>,
         width: usize,
     ) -> LoadedMessage {
-        let mut this = LoadedMessage { lines: Vec::new(), message };
+        let mut this = LoadedMessage {
+            lines: Vec::new(),
+            message,
+        };
         this.rebuild(peers, width);
         this
     }
@@ -125,7 +128,8 @@ impl LoadedMessage {
             // unwraps are ok because we start with at least 1 element
             let curr = self.lines.last().unwrap();
             if c.ch == '\n' || curr.len() >= width - 1 {
-                self.lines.push(FmtString::from_str(&" ".repeat(left_margin)))
+                self.lines
+                    .push(FmtString::from_str(&" ".repeat(left_margin)))
             }
             let curr = self.lines.last_mut().unwrap();
             if c.ch != '\n' {
@@ -235,29 +239,34 @@ impl Server {
             Ok(socket) => {
                 let addr = socket.peer_addr().unwrap(); // TODO figure out if this unwrap is ever gonna cause a problem
 
-                // let cx = TlsConnector::builder()
-                //     .danger_accept_invalid_certs(true)
-                //     .build()?;
-                // let cx = tokio_native_tls::TlsConnector::from(cx);
+                let cx = TlsConnector::builder()
+                    .danger_accept_invalid_certs(true)
+                    .build()
+                    .expect("Couldn't initialise a TLS connection");
+                let cx = tokio_native_tls::TlsConnector::from(cx);
 
-                // let socket = cx.connect(ip, socket).await?;
-                let (read_half, write_half) = tokio::io::split(socket);
+                match cx.connect(ip.as_str(), socket).await {
+                    Ok(socket) => {
+                        let (read_half, write_half) = tokio::io::split(socket);
 
-                let net_tx = tx.clone();
-                tokio::spawn(async move {
-                    tokio::select! {
-                        _ = Self::run_network(net_tx, read_half, addr) => {},
-                        _ = cancel.recv() => {}, // we need to shut down the connection rn
+                        let net_tx = tx.clone();
+                        tokio::spawn(async move {
+                            tokio::select! {
+                                _ = Self::run_network(net_tx, read_half, addr) => {},
+                                _ = cancel.recv() => {}, // we need to shut down the connection rn
+                            }
+                        });
+                        Ok(OnlineServer {
+                            loaded_messages: Vec::new(),
+                            channels: Vec::new(),
+                            curr_channel: None,
+                            peers: HashMap::new(),
+                            write_half,
+                            remote_addr: addr,
+                        })
                     }
-                });
-                Ok(OnlineServer {
-                    loaded_messages: Vec::new(),
-                    channels: Vec::new(),
-                    curr_channel: None,
-                    peers: HashMap::new(),
-                    write_half,
-                    remote_addr: addr,
-                })
+                    Err(e) => Err(format!("Failed to init TLS encryption: {:?}", e)),
+                }
             }
             Err(e) => Err(format!("Failed to connect: {:?}", e)),
         };
@@ -320,11 +329,21 @@ impl Server {
         loop {
             let mut result: String = "".to_string();
             match reader.read_line(&mut result).await {
-                Ok(_len) => {
+                Ok(len) => {
+                    if len == 0 {
+                        tx.send(LocalMessage::NetError(
+                            "Server sent zero-length response (likely shut down)".into(),
+                        ))
+                        .unwrap();
+                        return;
+                    }
                     tx.send(LocalMessage::Network(result, addr)).unwrap();
                 }
                 Err(e) => {
-                    println!("Error occurred in network thread, ip: {}: {:?}", addr, e);
+                    tx.send(LocalMessage::NetError(format!(
+                        "Error occurred in network thread, ip: {}: {:?}",
+                        addr, e
+                    )));
                     return;
                 }
             }
@@ -366,9 +385,17 @@ impl Server {
                     net.peers.insert(peer.uuid, peer);
                 }
             }
-            RegisterResponse { uuid: new_uuid, status: Ok } => self.uuid = Some(new_uuid.unwrap()),
-            RegisterResponse { status: Conflict, .. } => {
-                return Err(format!("Cannot register with username '{}' as it is already in use", self.uname.as_ref().unwrap()));
+            RegisterResponse {
+                uuid: new_uuid,
+                status: Ok,
+            } => self.uuid = Some(new_uuid.unwrap()),
+            RegisterResponse {
+                status: Conflict, ..
+            } => {
+                return Err(format!(
+                    "Cannot register with username '{}' as it is already in use",
+                    self.uname.as_ref().unwrap()
+                ));
             }
             LoginResponse {
                 uuid: Some(new_uuid),
