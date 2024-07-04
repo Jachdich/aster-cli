@@ -445,10 +445,16 @@ impl GUI {
 
         let mut buffer: String = "".to_string();
 
-        for message in messages
+        for (i, message) in messages
             [(start_idx as isize + self.scroll) as usize..(len as isize + self.scroll) as usize]
             .iter_mut()
+            .enumerate()
         {
+            let total_idx = i as isize + start_idx as isize + self.scroll;
+            let highlight = self
+                .selected_message
+                .is_some_and(|x| x as isize == len as isize - total_idx);
+
             let num_lines: usize = message.lines.len();
             for i in 0..num_lines {
                 if line >= max_lines {
@@ -456,11 +462,19 @@ impl GUI {
                     continue;
                 }
 
+                if highlight {
+                    buffer.push_str(&termion::style::Bold.to_string());
+                }
+
                 buffer.push_str(
                     &termion::cursor::Goto(message_start_x, height - line - 1).to_string(),
                 );
                 buffer.push_str(&message.lines[i].to_str());
                 buffer.push_str(&" ".repeat(max_chars - message.lines[i].len()));
+
+                if highlight {
+                    buffer.push_str(&termion::style::NoBold.to_string());
+                }
                 line -= 1;
             }
         }
@@ -572,7 +586,7 @@ impl GUI {
         self.draw_status_line(screen);
 
         match self.mode {
-            Mode::Messages => {
+            Mode::Messages | Mode::EditMessage => {
                 let (num_input_lines, max_drawing_width) = self.draw_input_buffer(screen);
                 if self.servers.len() > 0 {
                     self.draw_messages(screen, num_input_lines);

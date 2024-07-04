@@ -3,7 +3,7 @@ extern crate termion;
 use crate::api::Request;
 use crate::drawing::Theme;
 use crate::prompt::{EditBuffer, Prompt, PromptField};
-use crate::server::{Identification, Server};
+use crate::server::{Identification, LoadedMessage, Server};
 use crate::Focus;
 use crate::LocalMessage;
 use crate::Mode;
@@ -28,6 +28,7 @@ pub struct GUI {
     pub height: u16,
     pub cancel: broadcast::Sender<()>,
     pub settings: Settings,
+    pub selected_message: Option<usize>,
 }
 
 #[derive(Debug)]
@@ -57,6 +58,7 @@ impl GUI {
 
             cancel,
             settings,
+            selected_message: None,
         }
     }
 
@@ -64,9 +66,54 @@ impl GUI {
         self.system_message = format!("System: {}", message);
     }
 
+    fn get_selected_message(&self) -> Result<&LoadedMessage, CommandError> {
+        let Some(selected_message) = self.selected_message else {
+            return Err(CommandError("No message selected to edit!".to_string()));
+        };
+        let Some(server) = self.curr_server.map(|x| &self.servers[x]) else {
+            return Err(CommandError("No server selected!".to_string()));
+        };
+        let Ok(ref net) = server.network else {
+            return Err(CommandError("This server is offline!".to_string()));
+        };
+        Ok(&net.loaded_messages[net.loaded_messages.len() - selected_message])
+    }
+
+    pub async fn edit_message(&mut self, new_content: String) -> Result<(), CommandError> {
+        let uuid = self.get_selected_message()?.message.uuid;
+        let packet = Request::EditRequest {
+            message: uuid,
+            new_content,
+        };
+        // TODO code dupe...
+        let Some(server) = self.curr_server.map(|x| &mut self.servers[x]) else {
+            return Err(CommandError("No server selected!".to_string()));
+        };
+        let Ok(ref mut net) = server.network else {
+            return Err(CommandError("This server is offline!".to_string()));
+        };
+        net.write(packet)
+            .await
+            .map_err(|e| CommandError(format!("Error sending edit packet: {}", e)))?;
+        self.buffer = EditBuffer::new("".to_string());
+        self.selected_message = None;
+        Ok(())
+    }
+
     pub async fn handle_send_command(&mut self, cmd: String) -> Result<(), CommandError> {
         let argv = cmd.split(" ").collect::<Vec<&str>>();
         match argv[0] {
+            "/e" | "/edit" => match cmd.split_once(' ') {
+                Some((_, content)) => self.edit_message(content.to_owned()).await,
+                None => {
+                    self.mode = Mode::EditMessage;
+                    self.buffer = EditBuffer::new(
+                        self.get_selected_message().unwrap().message.content.clone(),
+                    ); // TODO save buffer
+                    self.send_system(&self.buffer.data.clone());
+                    Ok(())
+                }
+            },
             "/nick" => {
                 self.settings.uname = argv[1].to_owned();
                 for server in &mut self.servers {

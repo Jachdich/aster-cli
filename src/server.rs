@@ -373,7 +373,6 @@ impl Server {
             .network
             .as_mut()
             .expect("Network packet recv'd for offline server??");
-        let res = Err(response.name().to_owned());
         match response {
             GetMetadataResponse { data, .. } => {
                 for elem in data.unwrap() {
@@ -512,6 +511,6 @@ impl Server {
                 }
             }
         }
-        res
+        Result::Ok(())
     }
 }

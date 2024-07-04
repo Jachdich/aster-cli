@@ -32,21 +32,52 @@ impl GUI {
     }
 
     async fn handle_send_message(&mut self) {
-        if self.buffer.data.len() == 0 {
-            return;
-        }
-
-        if self.buffer.data.chars().nth(0).unwrap() == '/' {
-            if let Err(e) = self.handle_send_command(self.buffer.data.clone()).await {
-                self.send_system(e.0.as_str());
+        if self.mode == Mode::EditMessage {
+            if self.buffer.data.len() == 0 {
+                // delete message
+            } else {
+                if let Err(e) = self.edit_message(self.buffer.data.clone()).await {
+                    self.send_system(&e.0);
+                }
             }
+            self.mode = Mode::Messages;
             self.buffer = EditBuffer::new("".to_string());
-        } else if let Some(curr_server) = self.curr_server {
-            if let Err(e) = self.send_message_to_server(curr_server).await {
-                self.send_system(&e);
-            }
+            self.selected_message = None;
         } else {
-            self.send_system("No server is selected you silly goose!");
+            if self.buffer.data.len() == 0 {
+                return;
+            }
+
+            if self.buffer.data.chars().nth(0).unwrap() == '/' {
+                // clear edit buffer before executing command, in case command modifies the buffer
+                let command = self.buffer.data.clone();
+                self.buffer = EditBuffer::new("".to_string());
+
+                if let Err(e) = self.handle_send_command(command).await {
+                    self.send_system(e.0.as_str());
+                }
+            } else if let Some(curr_server) = self.curr_server {
+                if let Err(e) = self.send_message_to_server(curr_server).await {
+                    self.send_system(&e);
+                }
+            } else {
+                self.send_system("No server is selected you silly goose!");
+            }
+        }
+    }
+
+    fn select_message_up(&mut self) {
+        // TODO modify scroll if goes offscreen
+        self.selected_message = match self.selected_message {
+            None => Some(1),
+            Some(n) => Some(n + 1),
+        }
+    }
+    fn select_message_down(&mut self) {
+        self.selected_message = match self.selected_message {
+            Some(1) => None,
+            Some(n) => Some(n - 1),
+            None => None,
         }
     }
 
@@ -65,6 +96,14 @@ impl GUI {
 
             Event::Mouse(MouseEvent::Press(MouseButton::WheelDown, _, _)) => {
                 self.scroll += 1;
+            }
+
+            Event::Key(Key::Up) => self.select_message_up(),
+            Event::Key(Key::Down) => self.select_message_down(),
+            Event::Key(Key::Esc) if self.mode == Mode::EditMessage => {
+                self.mode = Mode::Messages;
+                self.buffer = EditBuffer::new("".to_string());
+                self.selected_message = None;
             }
             _ => (),
         }
@@ -178,7 +217,7 @@ impl GUI {
             }
             _ => (),
         }
-        if self.mode == Mode::Messages {
+        if self.mode == Mode::Messages || self.mode == Mode::EditMessage {
             match self.focus {
                 Focus::Edit => self.focus_edit_event(key.clone()).await,
                 Focus::ServerList => self.focus_servers_event(key.clone()),

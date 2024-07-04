@@ -30,6 +30,7 @@ pub enum Mode {
     NewServer,
     Messages,
     Settings,
+    EditMessage,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]

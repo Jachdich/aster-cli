@@ -8,7 +8,11 @@ bugs:
 	- I think it doesn't handle the sync server being offline very well (just allows you to connect anyway??
 	- quitting forcably (ctrl+c) before the name or other info has loaded can cause the config file to have null in it that causes it to crash (basically, use cached data *before* fetching new data)
 	- adding two of the same server causes problems
+	- selected message changes when someone sends a message
+	- moving channels with a message selected changes the selected message to one in the new channel
 features:
+	- make edit buffers persistent per-channel and saved to disk/sync
+	- store last loaded channel of each server to load on startup
     - show "edited" tag by edited messages
 	- passwords
 	- actually set & use sync data
@@ -38,6 +42,8 @@ features:
 	- windows support maybe...
 	- put on crates.io
 code:
+	- put the edit buffer in the server(channel??) structure
+	- put edit mode in server(channel??) structure
 	- figure out what to do when write causes an error
 	- clean up the theme system
 	- rewrite the message rendering code to be better
@@ -45,10 +51,10 @@ code:
 	- migrate away from using raw json as much as possible
 in progress:
 	- figure out a more elegant way to represent servers
-	- editing messages (done: receive edit notifs, todo: select & edit messages)
 tentatively done:
 	- config file
 	- sync server support
+	- editing messages (done: receive edit notifs, todo: select & edit messages)
 done:
 	- multi line messages don't get rebuilt upon resizing the window
 	- mouse support (servers, channels)
