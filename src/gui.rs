@@ -189,9 +189,18 @@ impl GUI {
     }
 
     pub async fn connect_to_server(&mut self, ip: String, port: u16, id: Identification) {
-        let mut conn = Server::new(ip, port, id.clone(), self.tx.clone(), self.cancel.subscribe()).await;
+        let mut conn = Server::new(
+            ip,
+            port,
+            id.clone(),
+            self.tx.clone(),
+            self.cancel.subscribe(),
+        )
+        .await;
         if let Ok(ref mut net) = conn.network {
-            net.initialise(id).await.unwrap();
+            net.initialise(id, self.settings.passwd.clone())
+                .await
+                .unwrap();
         }
         self.servers.push(conn);
     }
@@ -200,7 +209,9 @@ impl GUI {
         // TODO unwrap bade
         let mut pref_dir = dirs::preference_dir().unwrap();
         pref_dir.push("aster-cli");
-        std::fs::create_dir_all(pref_dir.as_path()).expect("Unable to create the directory to put the config file in! Do you have permission?");
+        std::fs::create_dir_all(pref_dir.as_path()).expect(
+            "Unable to create the directory to put the config file in! Do you have permission?",
+        );
         pref_dir.push("preferences.json");
         let mut file = std::fs::File::create(pref_dir).unwrap();
         let server_list = serde_json::to_value(&self.servers).unwrap();

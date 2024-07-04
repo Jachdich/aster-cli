@@ -162,13 +162,14 @@ impl OnlineServer {
     pub async fn initialise(
         &mut self,
         id: Identification,
+        passwd: String,
     ) -> std::result::Result<(), std::io::Error> {
         use Request::*;
         match id {
             Identification::Uuid(uuid) => {
                 self.write_half
                     .write_request(LoginRequest {
-                        passwd: "a".into(),
+                        passwd,
                         uname: None,
                         uuid: Some(uuid),
                     })
@@ -181,7 +182,7 @@ impl OnlineServer {
             Identification::Username(username) => {
                 self.write_half
                     .write_request(LoginRequest {
-                        passwd: "a".into(),
+                        passwd,
                         uname: Some(username),
                         uuid: None,
                     })
@@ -343,7 +344,8 @@ impl Server {
                     tx.send(LocalMessage::NetError(format!(
                         "Error occurred in network thread, ip: {}: {:?}",
                         addr, e
-                    )));
+                    )))
+                    .unwrap();
                     return;
                 }
             }

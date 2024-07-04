@@ -66,6 +66,7 @@ async fn init_server_from_syncserver(
     serv: &SyncServer,
     tx: &std::sync::mpsc::Sender<LocalMessage>,
     cancel: &broadcast::Sender<()>,
+    passwd: String,
 ) -> Option<Server> {
     let id = if let Some(uuid) = serv.uuid {
         crate::server::Identification::Uuid(uuid)
@@ -81,7 +82,7 @@ async fn init_server_from_syncserver(
     )
     .await;
     if conn.is_online() {
-        match conn.network.as_mut().unwrap().initialise(id).await {
+        match conn.network.as_mut().unwrap().initialise(id, passwd).await {
             Ok(()) => (),
             Err(e) => conn.to_offline(e.to_string()),
         }
@@ -121,11 +122,12 @@ async fn load_servers(
     server_info: &[api::SyncServer],
     tx: std::sync::mpsc::Sender<LocalMessage>,
     cancel: broadcast::Sender<()>,
+    passwd: String,
 ) -> Vec<Server> {
     let mut servers: Vec<Server> = Vec::new();
 
     for serv in server_info {
-        let conn = init_server_from_syncserver(serv, &tx, &cancel).await;
+        let conn = init_server_from_syncserver(serv, &tx, &cancel, passwd.clone()).await;
         if let Some(conn) = conn {
             servers.push(conn);
         } else {
@@ -414,9 +416,8 @@ async fn main() {
 
     let a: Vec<SyncServer> = serde_json::from_value(conf["servers"].clone()).unwrap(); // TODO temp
 
-    let servers = load_servers(&a, tx.clone(), cancel_tx.clone()).await;
     let settings = load_settings(&conf, sync_data);
-    // panic!("{:?}", settings);
+    let servers = load_servers(&a, tx.clone(), cancel_tx.clone(), settings.passwd.clone()).await;
 
     let mut last_width = 0;
     let mut last_height = 0;
