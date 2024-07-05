@@ -13,7 +13,7 @@ use std::net::SocketAddr;
 use std::sync::mpsc::Sender;
 use tokio::sync::broadcast;
 
-pub struct GUI {
+pub struct Gui {
     pub scroll: isize,
     pub buffer: EditBuffer,
     pub tx: Sender<LocalMessage>,
@@ -34,14 +34,14 @@ pub struct GUI {
 #[derive(Debug)]
 pub struct CommandError(pub String);
 
-impl GUI {
+impl Gui {
     pub async fn new(
         tx: std::sync::mpsc::Sender<LocalMessage>,
         cancel: broadcast::Sender<()>,
         settings: Settings,
         servers: Vec<Server>,
     ) -> Self {
-        GUI {
+        Gui {
             scroll: 0,
             buffer: EditBuffer::new("".into()),
             tx,
@@ -81,7 +81,7 @@ impl GUI {
 
     pub async fn edit_message(&mut self, new_content: String) -> Result<(), CommandError> {
         let uuid = self.get_selected_message()?.message.uuid;
-        let packet = Request::EditRequest {
+        let packet = Request::Edit {
             message: uuid,
             new_content,
         };
@@ -101,7 +101,7 @@ impl GUI {
     }
 
     pub async fn handle_send_command(&mut self, cmd: String) -> Result<(), CommandError> {
-        let argv = cmd.split(" ").collect::<Vec<&str>>();
+        let argv = cmd.split(' ').collect::<Vec<&str>>();
         match argv[0] {
             "/e" | "/edit" => match cmd.split_once(' ') {
                 Some((_, content)) => self.edit_message(content.to_owned()).await,
@@ -115,10 +115,10 @@ impl GUI {
                 }
             },
             "/nick" => {
-                self.settings.uname = argv[1].to_owned();
+                argv[1].clone_into(&mut self.settings.uname);
                 for server in &mut self.servers {
                     if let Ok(ref mut net) = server.network {
-                        net.write(Request::NickRequest {
+                        net.write(Request::Nick {
                             nick: argv[1].to_owned(),
                         })
                         .await
@@ -153,7 +153,7 @@ impl GUI {
                     )?);
 
                 //It is possible that this unwrap fails due to the time interval since it was last checked. fuck it I cba
-                net.write(Request::HistoryRequest {
+                net.write(Request::History {
                     num: 100,
                     channel: net.channels[net.curr_channel.unwrap()].uuid,
                     before_message: None,
@@ -169,10 +169,10 @@ impl GUI {
                     self.send_system("Expected exactly one argument");
                 }
 
-                match Theme::new(&argv[1]) {
+                match Theme::new(argv[1]) {
                     Ok(theme) => {
                         self.theme = theme;
-                        self.settings.theme = argv[1].to_owned();
+                        argv[1].clone_into(&mut self.settings.theme);
                         self.send_system(&format!("Changed theme to {}", argv[1]));
                         // all of these potentially need drawing
                         // self.draw_border();

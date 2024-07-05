@@ -1,13 +1,13 @@
 use super::Focus;
 use super::Mode;
-use crate::gui::GUI;
+use crate::gui::Gui;
 use crate::prompt::EditBuffer;
 use crate::prompt::PromptEvent;
 use crate::server::Identification;
 use crate::server::WriteAsterRequestAsync;
 use termion::event::{Event, Key, MouseButton, MouseEvent};
 
-impl GUI {
+impl Gui {
     async fn send_message_to_server(&mut self, server: usize) -> Result<(), String> {
         let net = self.servers[server]
             .network
@@ -20,7 +20,7 @@ impl GUI {
         let uuid = net.channels[ch].uuid;
         let content = self.buffer.data.clone();
         net.write_half
-            .write_request(crate::api::Request::SendRequest {
+            .write_request(crate::api::Request::Send {
                 content,
                 channel: uuid,
             })
@@ -33,18 +33,16 @@ impl GUI {
 
     async fn handle_send_message(&mut self) {
         if self.mode == Mode::EditMessage {
-            if self.buffer.data.len() == 0 {
+            if self.buffer.data.is_empty() {
                 // delete message
-            } else {
-                if let Err(e) = self.edit_message(self.buffer.data.clone()).await {
-                    self.send_system(&e.0);
-                }
+            } else if let Err(e) = self.edit_message(self.buffer.data.clone()).await {
+                self.send_system(&e.0);
             }
             self.mode = Mode::Messages;
             self.buffer = EditBuffer::new("".to_string());
             self.selected_message = None;
         } else {
-            if self.buffer.data.len() == 0 {
+            if self.buffer.data.is_empty() {
                 return;
             }
 
@@ -125,7 +123,7 @@ impl GUI {
                 }
                 _ => (),
             }
-        } else if self.servers.len() > 0 {
+        } else if !self.servers.is_empty() {
             self.curr_server = Some(0);
         }
     }
@@ -151,7 +149,7 @@ impl GUI {
             Event::Key(Key::Down) => {
                 if net.curr_channel.is_some_and(|x| x < net.channels.len() - 1) {
                     Some(net.curr_channel.unwrap() + 1)
-                } else if net.curr_channel.is_none() && net.channels.len() > 0 {
+                } else if net.curr_channel.is_none() && !net.channels.is_empty() {
                     Some(0)
                 } else {
                     None
@@ -166,39 +164,35 @@ impl GUI {
     }
 
     pub async fn focus_any_event(&mut self, event: Event) {
-        match event {
-            Event::Mouse(MouseEvent::Press(MouseButton::Left, x, y)) => {
-                if x >= self.theme.sidebar_width as u16
-                    + self.theme.channels.border.left.width()
-                    + self.theme.channels.border.right.width()
-                    || x <= self.theme.channels.border.left.width()
-                {
-                    return;
-                }
+        if let Event::Mouse(MouseEvent::Press(MouseButton::Left, x, y)) = event {
+            if x >= self.theme.sidebar_width as u16
+                + self.theme.channels.border.left.width()
+                + self.theme.channels.border.right.width()
+                || x <= self.theme.channels.border.left.width()
+            {
+                return;
+            }
 
-                if y >= self.theme.get_servers_start_pos() as u16
-                    && y < self.theme.get_channels_start_pos(self.height) as u16 - 1
-                {
-                    let idx = y as usize - self.theme.get_servers_start_pos();
-                    let Some(curr_server) = self.curr_server.map(|idx| &mut self.servers[idx])
-                    else {
-                        return ();
-                    };
-                    if let Ok(ref mut net) = curr_server.network {
-                        if idx < net.channels.len() && !net.curr_channel.is_some_and(|c| c == idx) {
-                            net.switch_channel(idx).await;
-                        }
+            if y >= self.theme.get_servers_start_pos() as u16
+                && y < self.theme.get_channels_start_pos(self.height) as u16 - 1
+            {
+                let idx = y as usize - self.theme.get_servers_start_pos();
+                let Some(curr_server) = self.curr_server.map(|idx| &mut self.servers[idx]) else {
+                    return;
+                };
+                if let Ok(ref mut net) = curr_server.network {
+                    if idx < net.channels.len() && !net.curr_channel.is_some_and(|c| c == idx) {
+                        net.switch_channel(idx).await;
                     }
-                } else if y >= self.theme.get_channels_start_pos(self.height) as u16
-                    && y < self.height - self.theme.servers.border.bottom.width()
-                {
-                    let idx = y as usize - self.theme.get_channels_start_pos(self.height);
-                    if idx < self.servers.len() {
-                        self.curr_server = Some(idx);
-                    }
+                }
+            } else if y >= self.theme.get_channels_start_pos(self.height) as u16
+                && y < self.height - self.theme.servers.border.bottom.width()
+            {
+                let idx = y as usize - self.theme.get_channels_start_pos(self.height);
+                if idx < self.servers.len() {
+                    self.curr_server = Some(idx);
                 }
             }
-            _ => (),
         }
     }
 

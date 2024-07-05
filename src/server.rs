@@ -28,7 +28,7 @@ pub trait WriteAsterRequest {
 
 impl WriteAsterRequest for native_tls::TlsStream<std::net::TcpStream> {
     fn write_request(&mut self, command: &api::Request) -> Result<(), std::io::Error> {
-        write!(self, "{}\n", serde_json::to_string(command).unwrap())
+        writeln!(self, "{}", serde_json::to_string(command).unwrap())
     }
 }
 
@@ -168,20 +168,18 @@ impl OnlineServer {
         match id {
             Identification::Uuid(uuid) => {
                 self.write_half
-                    .write_request(LoginRequest {
+                    .write_request(Login {
                         passwd,
                         uname: None,
                         uuid: Some(uuid),
                     })
                     .await?;
-                self.write_half
-                    .write_request(GetUserRequest { uuid })
-                    .await?; // just make certain we get our own name
+                self.write_half.write_request(GetUser { uuid }).await?; // just make certain we get our own name
                 Ok(())
             }
             Identification::Username(username) => {
                 self.write_half
-                    .write_request(LoginRequest {
+                    .write_request(Login {
                         passwd,
                         uname: Some(username),
                         uuid: None,
@@ -194,11 +192,11 @@ impl OnlineServer {
 
     async fn post_init(&mut self) -> Result<(), std::io::Error> {
         use Request::*;
-        self.write_half.write_request(GetIconRequest).await?;
-        self.write_half.write_request(GetNameRequest).await?;
-        self.write_half.write_request(GetMetadataRequest).await?;
-        self.write_half.write_request(ListChannelsRequest).await?;
-        self.write_half.write_request(OnlineRequest).await?;
+        self.write_half.write_request(GetIcon).await?;
+        self.write_half.write_request(GetName).await?;
+        self.write_half.write_request(GetMetadata).await?;
+        self.write_half.write_request(ListChannels).await?;
+        self.write_half.write_request(Online).await?;
         Ok(())
     }
     pub async fn write(&mut self, request: Request) -> Result<usize, std::io::Error> {
@@ -215,7 +213,7 @@ impl OnlineServer {
         let channel = self.channels[idx].uuid;
         let res = self
             .write_half
-            .write_request(api::Request::HistoryRequest {
+            .write_request(api::Request::History {
                 num: 100,
                 channel,
                 before_message: None,
@@ -374,7 +372,7 @@ impl Server {
             .as_mut()
             .expect("Network packet recv'd for offline server??");
         match response {
-            GetMetadataResponse { data, .. } => {
+            GetMetadata { data, .. } => {
                 for elem in data.unwrap() {
                     let peer = Peer::from_user(elem);
                     if self.uuid.is_some_and(|uuid| uuid == peer.uuid) {
@@ -386,11 +384,11 @@ impl Server {
                     net.peers.insert(peer.uuid, peer);
                 }
             }
-            RegisterResponse {
+            Register {
                 uuid: new_uuid,
                 status: Ok,
             } => self.uuid = Some(new_uuid.unwrap()),
-            RegisterResponse {
+            Register {
                 status: Conflict, ..
             } => {
                 return Err(format!(
@@ -398,14 +396,14 @@ impl Server {
                     self.uname.as_ref().unwrap()
                 ));
             }
-            LoginResponse {
+            Login {
                 uuid: Some(new_uuid),
                 status: Ok,
             } => {
                 self.uuid = Some(new_uuid);
                 net.post_init().await.unwrap(); // TODO get rid of this unwrap
             }
-            LoginResponse {
+            Login {
                 status: NotFound, ..
             } => {
                 // Try register instead
@@ -415,19 +413,19 @@ impl Server {
                     .ok_or("No username to register with!".to_owned())?
                     .to_owned();
                 net.write_half
-                    .write_request(Request::RegisterRequest {
+                    .write_request(Request::Register {
                         passwd: "a".into(),
                         uname,
                     })
                     .await
                     .unwrap(); // TODO get rid of this
             }
-            LoginResponse {
+            Login {
                 status: Forbidden, ..
             } => {
                 return Err(format!(
                     "Invalid password for {}@{}:{}",
-                    self.uname.as_ref().map(|s| s.as_str()).unwrap_or(
+                    self.uname.as_deref().unwrap_or(
                         self.uuid
                             .map(|uuid| format!("{}", uuid))
                             .unwrap_or("{unknown}".to_owned()) // this should never happen, but just in case
@@ -437,9 +435,9 @@ impl Server {
                     self.port
                 ));
             }
-            GetNameResponse { data, status: Ok } => self.name = Some(data.unwrap()),
-            ListChannelsResponse { data, status: Ok } => net.channels = data.unwrap(),
-            HistoryResponse { data, status: Ok } => {
+            GetName { data, status: Ok } => self.name = Some(data.unwrap()),
+            ListChannels { data, status: Ok } => net.channels = data.unwrap(),
+            History { data, status: Ok } => {
                 let new_msgs = data
                     .unwrap()
                     .into_iter()
@@ -447,7 +445,7 @@ impl Server {
                     .collect::<Vec<_>>(); // TODO get rid of this collect: borrow checker complains, tho
                 net.loaded_messages.extend(new_msgs);
             }
-            ContentResponse { message, .. } => {
+            Content { message, .. } => {
                 let in_current_channel = net
                     .curr_channel
                     .is_some_and(|c| net.channels[c].uuid == message.channel_uuid);
@@ -465,7 +463,7 @@ impl Server {
                     Notification::new()
                         .summary(&format!(
                             "{} #{}",
-                            self.name.as_ref().map(|s| s.as_str()).unwrap_or(" "),
+                            self.name.as_deref().unwrap_or(" "),
                             net.get_channel(message.channel_uuid)
                                 .map(|c| c.name.as_str())
                                 .unwrap_or("Unknown Channel"),
@@ -484,7 +482,7 @@ impl Server {
                 }
             }
 
-            MessageEditedResponse {
+            MessageEdited {
                 status: Ok,
                 message,
                 new_content,
@@ -499,7 +497,7 @@ impl Server {
                 }
             }
 
-            MessageDeletedResponse {
+            MessageDeleted {
                 status: Ok,
                 message,
             } => {

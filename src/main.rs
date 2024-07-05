@@ -23,7 +23,7 @@ mod gui;
 mod prompt;
 mod server;
 
-use gui::GUI;
+use gui::Gui;
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum Mode {
@@ -90,7 +90,7 @@ async fn init_server_from_syncserver(
     }
 
     if !conn.is_online() {
-        conn.name = serv.name.clone(); // TODO get rid of this clone()?
+        conn.name.clone_from(&serv.name); // TODO get rid of this clone()?
         conn.uuid = serv.uuid;
         conn.uname = Some(serv.uname.clone());
     }
@@ -162,18 +162,18 @@ fn load_sync_data(
         .expect("AAA TEST can't init tls connection");
 
     match auth {
-        AuthMode::Login => conn.write_request(&api::Request::LoginRequest {
+        AuthMode::Login => conn.write_request(&api::Request::Login {
             passwd: passwd.to_owned(),
             uname: Some(uname.to_owned()),
             uuid: None,
         })?,
-        AuthMode::Register => conn.write_request(&api::Request::RegisterRequest {
+        AuthMode::Register => conn.write_request(&api::Request::Register {
             passwd: passwd.to_owned(),
             uname: uname.to_owned(),
         })?,
     }
-    conn.write_request(&api::Request::SyncGetRequest)?;
-    conn.write_request(&api::Request::SyncGetServersRequest)?;
+    conn.write_request(&api::Request::SyncGet)?;
+    conn.write_request(&api::Request::SyncGetServers)?;
 
     let mut reader = BufReader::new(conn);
     let mut syncdata: Option<SyncData> = None;
@@ -189,24 +189,24 @@ fn load_sync_data(
         use Response::*;
         use Status::*;
         match response {
-            LoginResponse { status: Ok, .. } | RegisterResponse { status: Ok, .. } => (),
-            LoginResponse {
+            Login { status: Ok, .. } | Register { status: Ok, .. } => (),
+            Login {
                 status: Forbidden, ..
             } => return Err(Error::new(ErrorKind::PermissionDenied, "")),
-            LoginResponse {
+            Login {
                 status: NotFound, ..
             } => return Err(Error::new(ErrorKind::NotFound, "")),
-            SyncGetResponse {
+            SyncGet {
                 status: Ok,
                 data: Some(data),
             } => {
                 syncdata = Some(data);
                 got_data = true
             }
-            SyncGetResponse {
+            SyncGet {
                 status: NotFound, ..
             } => got_data = true,
-            SyncGetServersResponse {
+            SyncGetServers {
                 status: Ok,
                 servers: Some(servers),
             } => {
@@ -326,7 +326,7 @@ fn get_sync_details<W: Write>(
         let passwd = config["passwd"].as_str().unwrap().to_owned(); // yea i think this unwrap is O.K. rn
         let sync_ip = config["sync_ip"].as_str().unwrap().to_owned(); // yea i think this unwrap is O.K. rn
         let sync_port = config["sync_port"].as_u64().unwrap() as u16; // yea i think this unwrap is O.K. rn
-        return Ok((sync_ip, sync_port, uname, passwd, AuthMode::Login));
+        Ok((sync_ip, sync_port, uname, passwd, AuthMode::Login))
     }
 }
 
@@ -389,11 +389,9 @@ async fn main() {
 
     let mut show_error = None;
     let (sync_data, _sync_servers) = loop {
-        let Ok((sync_ip, sync_port, uname, passwd, auth)) = get_sync_details(
-            &conf,
-            &mut screen,
-            show_error.as_ref().map(|s: &String| s.as_str()),
-        ) else {
+        let Ok((sync_ip, sync_port, uname, passwd, auth)) =
+            get_sync_details(&conf, &mut screen, show_error.as_deref())
+        else {
             return; // quit because the only error state is if the user decides to exit
         };
 
@@ -424,7 +422,7 @@ async fn main() {
     let mut last_height = 0;
     let mut last_theme = settings.theme.clone();
 
-    let mut gui = GUI::new(tx.clone(), cancel_tx.clone(), settings, servers).await;
+    let mut gui = Gui::new(tx.clone(), cancel_tx.clone(), settings, servers).await;
     screen.flush().unwrap();
 
     let input_tx = tx.clone();
@@ -446,7 +444,7 @@ async fn main() {
         if last_width != width || last_height != height || last_theme != gui.settings.theme {
             let border = draw_border(&gui.theme);
             write!(screen, "{}", border).unwrap();
-            last_theme = gui.settings.theme.clone();
+            last_theme.clone_from(&gui.settings.theme);
 
             // TODO kinda ugly
             for server in &mut gui.servers {
@@ -485,7 +483,7 @@ async fn main() {
                             gui.servers[idx]
                                 .network
                                 .as_ref()
-                                .is_ok_and(|ref net| net.remote_addr == addr)
+                                .is_ok_and(|net| net.remote_addr == addr)
                         });
                         match gui
                             .get_server_by_addr(addr)

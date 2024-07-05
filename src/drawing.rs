@@ -1,4 +1,4 @@
-use crate::gui::GUI;
+use crate::gui::Gui;
 use crate::{Focus, Mode};
 use fmtstring::{Colour, FmtChar};
 use once_cell::sync::Lazy;
@@ -20,8 +20,8 @@ fn centred(text: &str, width: usize) -> String {
 fn fmtchar_from_json_impl(val: &serde_json::Value) -> Option<FmtChar> {
     Some(FmtChar {
         ch: val[0].as_str()?.chars().next()?,
-        fg: parse_colour(&val[1].as_str()?),
-        bg: parse_colour(&val[2].as_str()?),
+        fg: parse_colour(val[1].as_str()?),
+        bg: parse_colour(val[2].as_str()?),
     })
 }
 
@@ -30,7 +30,7 @@ pub fn fmtchar_from_json(val: &serde_json::Value) -> OptionalFmtChar {
 }
 
 fn parse_colour(inp: &str) -> Colour {
-    if inp.starts_with("#") {
+    if inp.starts_with('#') {
         panic!("RGB colours not currently supported");
     }
 
@@ -146,71 +146,71 @@ impl ThemedArea {
     pub fn new(cfg: &serde_json::Value, fallback: &serde_json::Value) -> Self {
         ThemedArea {
             text: Colour2 {
-                fg: parse_colour(&get_or("text-foreground", cfg, fallback).as_str().unwrap()),
-                bg: parse_colour(&get_or("text-background", cfg, fallback).as_str().unwrap()),
+                fg: parse_colour(get_or("text-foreground", cfg, fallback).as_str().unwrap()),
+                bg: parse_colour(get_or("text-background", cfg, fallback).as_str().unwrap()),
             },
             selected_text: Colour2 {
                 fg: parse_colour(
-                    &get_or("selected-text-foreground", cfg, fallback)
+                    get_or("selected-text-foreground", cfg, fallback)
                         .as_str()
                         .unwrap(),
                 ),
                 bg: parse_colour(
-                    &get_or("selected-text-background", cfg, fallback)
+                    get_or("selected-text-background", cfg, fallback)
                         .as_str()
                         .unwrap(),
                 ),
             },
             unfocussed_selected_text: Colour2 {
                 fg: parse_colour(
-                    &get_or("unfocussed-selected-text-foreground", cfg, fallback)
+                    get_or("unfocussed-selected-text-foreground", cfg, fallback)
                         .as_str()
                         .unwrap(),
                 ),
                 bg: parse_colour(
-                    &get_or("unfocussed-selected-text-background", cfg, fallback)
+                    get_or("unfocussed-selected-text-background", cfg, fallback)
                         .as_str()
                         .unwrap(),
                 ),
             },
             error_text: Colour2 {
                 fg: parse_colour(
-                    &get_or("error-text-foreground", cfg, fallback)
+                    get_or("error-text-foreground", cfg, fallback)
                         .as_str()
                         .unwrap(),
                 ),
                 bg: parse_colour(
-                    &get_or("error-text-background", cfg, fallback)
+                    get_or("error-text-background", cfg, fallback)
                         .as_str()
                         .unwrap(),
                 ),
             },
             system_message: Colour2 {
                 fg: parse_colour(
-                    &get_or("system-message-foreground", cfg, fallback)
+                    get_or("system-message-foreground", cfg, fallback)
                         .as_str()
                         .unwrap(),
                 ),
                 bg: parse_colour(
-                    &get_or("system-message-background", cfg, fallback)
+                    get_or("system-message-background", cfg, fallback)
                         .as_str()
                         .unwrap(),
                 ),
             },
 
             border: ThemedBorder {
-                tl: fmtchar_from_json(get_or("border-tl", &cfg, &fallback)),
-                tr: fmtchar_from_json(get_or("border-tr", &cfg, &fallback)),
-                bl: fmtchar_from_json(get_or("border-bl", &cfg, &fallback)),
-                br: fmtchar_from_json(get_or("border-br", &cfg, &fallback)),
-                top: fmtchar_from_json(get_or("border-top", &cfg, &fallback)),
-                bottom: fmtchar_from_json(get_or("border-bottom", &cfg, &fallback)),
-                left: fmtchar_from_json(get_or("border-left", &cfg, &fallback)),
-                right: fmtchar_from_json(get_or("border-right", &cfg, &fallback)),
-                bottom_split: fmtchar_from_json(get_or("border-bottom-split", &cfg, &fallback)),
-                top_split: fmtchar_from_json(get_or("border-top-split", &cfg, &fallback)),
-                left_split: fmtchar_from_json(get_or("border-left-split", &cfg, &fallback)),
-                right_split: fmtchar_from_json(get_or("border-right-split", &cfg, &fallback)),
+                tl: fmtchar_from_json(get_or("border-tl", cfg, fallback)),
+                tr: fmtchar_from_json(get_or("border-tr", cfg, fallback)),
+                bl: fmtchar_from_json(get_or("border-bl", cfg, fallback)),
+                br: fmtchar_from_json(get_or("border-br", cfg, fallback)),
+                top: fmtchar_from_json(get_or("border-top", cfg, fallback)),
+                bottom: fmtchar_from_json(get_or("border-bottom", cfg, fallback)),
+                left: fmtchar_from_json(get_or("border-left", cfg, fallback)),
+                right: fmtchar_from_json(get_or("border-right", cfg, fallback)),
+                bottom_split: fmtchar_from_json(get_or("border-bottom-split", cfg, fallback)),
+                top_split: fmtchar_from_json(get_or("border-top-split", cfg, fallback)),
+                left_split: fmtchar_from_json(get_or("border-left-split", cfg, fallback)),
+                right_split: fmtchar_from_json(get_or("border-right-split", cfg, fallback)),
             },
         }
     }
@@ -271,8 +271,8 @@ impl Theme {
     }
 
     pub fn get_channels_start_pos(&self, height: u16) -> usize {
-        self.get_servers_start_pos() as usize
-            + self.get_servers_height(height) as usize
+        self.get_servers_start_pos()
+            + self.get_servers_height(height)
             + self.channels.border.bottom.width() as usize
             + self.servers.border.top.width() as usize
     }
@@ -297,7 +297,7 @@ fn border_rep(c: &OptionalFmtChar, n: usize) -> String {
             "{}{}{}{}{}",
             c.fg.to_string(fmtstring::Ground::Foreground),
             c.bg.to_string(fmtstring::Ground::Background),
-            (&format!("{}", c.ch)).repeat(n),
+            (format!("{}", c.ch)).repeat(n),
             termion::color::Fg(termion::color::Reset),
             termion::color::Bg(termion::color::Reset)
         )
@@ -306,7 +306,7 @@ fn border_rep(c: &OptionalFmtChar, n: usize) -> String {
     }
 }
 
-impl GUI {
+impl Gui {
     pub fn draw_servers<W: Write>(&self, screen: &mut W) {
         let (_width, height) = termion::terminal_size().unwrap();
         let height = height - 1;
@@ -415,7 +415,7 @@ impl GUI {
         let len = messages.len();
 
         //LOL not a good idea but it works
-        let start_idx = len as isize - max_messages as isize + self.scroll as isize;
+        let start_idx = len as isize - max_messages as isize + self.scroll;
         let start_idx = if start_idx < 0 { 0 } else { start_idx as usize };
 
         if self.scroll > 0 {
@@ -463,17 +463,17 @@ impl GUI {
                 }
 
                 if highlight {
-                    buffer.push_str(&termion::style::Bold.to_string());
+                    buffer.push_str(termion::style::Bold.as_ref());
                 }
 
                 buffer.push_str(
                     &termion::cursor::Goto(message_start_x, height - line - 1).to_string(),
                 );
-                buffer.push_str(&message.lines[i].to_str());
+                buffer.push_str(message.lines[i].to_str());
                 buffer.push_str(&" ".repeat(max_chars - message.lines[i].len()));
 
                 if highlight {
-                    buffer.push_str(&termion::style::NoBold.to_string());
+                    buffer.push_str(termion::style::NoBold.as_ref());
                 }
                 line -= 1;
             }
@@ -588,7 +588,7 @@ impl GUI {
         match self.mode {
             Mode::Messages | Mode::EditMessage => {
                 let (num_input_lines, max_drawing_width) = self.draw_input_buffer(screen);
-                if self.servers.len() > 0 {
+                if !self.servers.is_empty() {
                     self.draw_messages(screen, num_input_lines);
                     self.draw_servers(screen);
                 }
@@ -610,7 +610,7 @@ impl GUI {
                 .unwrap();
             }
             Mode::NewServer => {
-                if self.servers.len() > 0 {
+                if !self.servers.is_empty() {
                     self.draw_servers(screen);
                 }
                 self.draw_prompt(screen);
