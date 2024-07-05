@@ -499,6 +499,14 @@ impl Server {
                 }
             }
 
+            MessageDeletedResponse {
+                status: Ok,
+                message,
+            } => {
+                net.loaded_messages
+                    .retain(|msg| msg.message.uuid != message);
+            }
+
             _ => {
                 if response.status() != Status::Ok {
                     return Err(format!(
