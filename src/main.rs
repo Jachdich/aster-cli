@@ -78,6 +78,7 @@ async fn init_server_from_syncserver(
         serv.ip.clone(),
         serv.port as u16,
         id.clone(),
+        passwd.clone(),
         tx.clone(),
         cancel.subscribe(),
     )

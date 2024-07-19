@@ -240,6 +240,7 @@ impl Gui {
             ip,
             port,
             id.clone(),
+            self.settings.passwd.clone(),
             self.tx.clone(),
             self.cancel.subscribe(),
         )

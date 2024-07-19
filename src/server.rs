@@ -93,6 +93,7 @@ pub struct Server {
     pub name: Option<String>,
     pub uuid: Option<i64>,
     pub uname: Option<String>,
+    pub passwd: String,
     pub network: Result<OnlineServer, String>,
 }
 
@@ -231,6 +232,7 @@ impl Server {
         ip: String,
         port: u16,
         id: Identification,
+        passwd: String, // TODO get rid of this (needed to register rn)
         tx: Sender<LocalMessage>,
         mut cancel: Receiver<()>,
     ) -> Self {
@@ -281,6 +283,7 @@ impl Server {
             name: None,
             uuid,
             uname,
+            passwd,
             network,
         }
     }
@@ -414,7 +417,7 @@ impl Server {
                     .to_owned();
                 net.write_half
                     .write_request(Request::Register {
-                        passwd: "a".into(),
+                        passwd: self.passwd.clone(),
                         uname,
                     })
                     .await
