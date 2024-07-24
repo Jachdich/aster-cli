@@ -306,18 +306,22 @@ fn border_rep(c: &OptionalFmtChar, n: usize) -> String {
     }
 }
 
+use std::fmt::Write as _;
+
 impl Gui {
     pub fn draw_servers<W: Write>(&self, screen: &mut W) {
+        let a = std::time::Instant::now();
         let (_width, height) = termion::terminal_size().unwrap();
         let height = height - 1;
 
         let mut vert_pos = self.theme.get_servers_start_pos() as u16;
         let mut idx = 0;
+        let mut buffer = String::new();
         if let Some(curr_server) = self.curr_server {
             if let Ok(ref net) = &self.servers[curr_server].network {
                 for channel in &net.channels {
                     write!(
-                        screen,
+                        buffer,
                         "{}{}{}{}{}{}{}{}",
                         termion::cursor::Goto(
                             1 + self.theme.channels.border.left.width(),
@@ -349,7 +353,7 @@ impl Gui {
 
         while vert_pos < self.theme.get_channels_start_pos(height) as u16 {
             write!(
-                screen,
+                buffer,
                 "{}{}",
                 termion::cursor::Goto(1 + self.theme.servers.border.left.width(), vert_pos),
                 " ".repeat(self.theme.sidebar_width),
@@ -364,7 +368,7 @@ impl Gui {
             let backup_name = format!("<{}:{}>", server.ip, server.port);
             let display_name = server.name.as_ref().unwrap_or(&backup_name);
             write!(
-                screen,
+                buffer,
                 "{}{}{}{}{}{}{}{}",
                 termion::cursor::Goto(1 + self.theme.servers.border.left.width(), vert_pos),
                 termion::color::Fg(termion::color::Reset),
@@ -389,9 +393,14 @@ impl Gui {
             vert_pos += 1;
             idx += 1;
         }
+        log_time(a.elapsed(), "draw_channels logic");
+        let a = std::time::Instant::now();
+        write!(screen, "{}", buffer).unwrap();
+        log_time(a.elapsed(), "draw_channels write");
     }
 
     pub fn draw_messages<W: Write>(&mut self, screen: &mut W, input_lines: u16) {
+        let a = std::time::Instant::now();
         let mut nothing = Vec::new();
         let messages = if let Some(curr_server) = self.curr_server {
             self.servers[curr_server]
@@ -486,6 +495,9 @@ impl Gui {
             buffer.push_str(&spaces);
             line -= 1;
         }
+
+        log_time(a.elapsed(), "draw_messages logic");
+        let a = std::time::Instant::now();
         write!(
             screen,
             "{}{}{}",
@@ -494,11 +506,14 @@ impl Gui {
             buffer
         )
         .unwrap();
+        log_time(a.elapsed(), "draw_messages write");
     }
 
     pub fn draw_status_line<W: Write>(&self, screen: &mut W) {
+        let a = std::time::Instant::now();
+        let mut buffer = String::new();
         write!(
-            screen,
+            buffer,
             "{}{}{}{}{}{}",
             termion::cursor::Goto(1, self.height),
             self.theme.status.system_message,
@@ -508,9 +523,15 @@ impl Gui {
             termion::color::Fg(termion::color::Reset),
         )
         .unwrap();
+        log_time(a.elapsed(), "draw_status_line logic");
+        let a = std::time::Instant::now();
+        write!(screen, "{}", buffer).unwrap();
+        log_time(a.elapsed(), "draw_status_line write");
     }
 
     pub fn draw_input_buffer<W: Write>(&self, screen: &mut W) -> (u16, u16) {
+        let a = std::time::Instant::now();
+        let mut buffer = String::new();
         let begin_x = self.theme.sidebar_width as u16
             + self.theme.servers.border.left.width()
             + self.theme.servers.border.right.width()
@@ -535,7 +556,7 @@ impl Gui {
             }
             let line = &self.buffer.data[pos..pos + len];
             write!(
-                screen,
+                buffer,
                 "{}{}",
                 termion::cursor::Goto(begin_x, self.height - 1 - num_lines + curr_line),
                 line
@@ -546,7 +567,7 @@ impl Gui {
             let curr_line_len = line.len();
             if curr_line_len < max_drawing_width as usize {
                 write!(
-                    screen,
+                    buffer,
                     "{}",
                     " ".repeat(max_drawing_width as usize - curr_line_len)
                 )
@@ -569,6 +590,10 @@ impl Gui {
             )
             .unwrap();
         }
+        log_time(a.elapsed(), "draw_input_buffer logic");
+        let a = std::time::Instant::now();
+        write!(screen, "{}", buffer).unwrap();
+        log_time(a.elapsed(), "draw_input_buffer write");
         (num_lines, max_drawing_width)
     }
 
@@ -621,6 +646,7 @@ impl Gui {
 }
 
 pub fn draw_border(theme: &Theme) -> String {
+    let a = std::time::Instant::now();
     let (width, height) = termion::terminal_size().unwrap();
     let height = height - 1;
     let channels_height = theme.get_channels_height(height);
@@ -636,7 +662,7 @@ pub fn draw_border(theme: &Theme) -> String {
     let rs = termion::color::Fg(termion::color::Reset).to_string()
         + (&termion::color::Bg(termion::color::Reset).to_string());
 
-    format!("{0}{1}{sttl}{2}{3}\r\n{stleft}{rs}{4}{stright}{mleft}{space_padding}{mright}\r\n{stleft}{rs}{5}{stright}{mleft}{space_padding}{mright}\r\n{6}{7}{8}{9}{sbl}{10}{11}",
+    let res = format!("{0}{1}{sttl}{2}{3}\r\n{stleft}{rs}{4}{stright}{mleft}{space_padding}{mright}\r\n{stleft}{rs}{5}{stright}{mleft}{space_padding}{mright}\r\n{6}{7}{8}{9}{sbl}{10}{11}",
 /*0*/       termion::cursor::Goto(1, 1),
 /*1*/       "",
 /*2*/       border_rep(&theme.status.border.top, left_margin),
@@ -767,5 +793,11 @@ pub fn draw_border(theme: &Theme) -> String {
         rs = rs,
         //mbr = theme.messages.border.br,
         //mtr = theme.messages.border.tr,
-    )
+    );
+    log_time(a.elapsed(), "draw_border logic");
+    res
+}
+
+pub fn log_time(t: std::time::Duration, s: &'static str) {
+    std::fs::OpenOptions::new().write(true).append(true).open("times.txt").unwrap().write_fmt(format_args!("{}: {:?}\n", s, t)).unwrap();
 }

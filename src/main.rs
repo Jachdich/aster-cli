@@ -444,7 +444,9 @@ async fn main() {
 
         if last_width != width || last_height != height || last_theme != gui.settings.theme {
             let border = draw_border(&gui.theme);
+            let a = std::time::Instant::now();
             write!(screen, "{}", border).unwrap();
+            crate::drawing::log_time(a.elapsed(), "draw_border write");
             last_theme.clone_from(&gui.settings.theme);
 
             // TODO kinda ugly
