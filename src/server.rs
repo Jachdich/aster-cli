@@ -463,7 +463,8 @@ impl Server {
                     || !in_current_channel
                     || inactivity_time > Duration::from_secs(10)
                 {
-                    Notification::new()
+                    // ignore errors, for now
+                    let _ = Notification::new()
                         .summary(&format!(
                             "{} #{}",
                             self.name.as_deref().unwrap_or(" "),
@@ -480,8 +481,7 @@ impl Server {
                             message.content
                         ))
                         .timeout(Timeout::Milliseconds(6000))
-                        .show()
-                        .unwrap();
+                        .show();
                 }
             }
 
