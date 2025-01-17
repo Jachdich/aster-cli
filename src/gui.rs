@@ -100,6 +100,23 @@ impl Gui {
         Ok(())
     }
 
+    pub async fn delete_message(&mut self) -> Result<(), CommandError> {
+        // TODO MASSIVE code dupe...
+        let uuid = self.get_selected_message()?.message.uuid;
+        let packet = Request::Delete { message: uuid };
+        let Some(server) = self.curr_server.map(|x| &mut self.servers[x]) else {
+            return Err(CommandError("No server selected!".to_string()));
+        };
+        let Ok(ref mut net) = server.network else {
+            return Err(CommandError("This server is offline!".to_string()));
+        };
+        net.write(packet)
+            .await
+            .map_err(|e| CommandError(format!("Error sending delete packet: {}", e)))?;
+        self.selected_message = None;
+        Ok(())
+    }
+
     pub async fn handle_send_command(&mut self, cmd: String) -> Result<(), CommandError> {
         let argv = cmd.split(' ').collect::<Vec<&str>>();
         match argv[0] {
@@ -114,6 +131,7 @@ impl Gui {
                     Ok(())
                 }
             },
+            "/d" | "/delete" => self.delete_message().await,
             "/nick" => {
                 argv[1].clone_into(&mut self.settings.uname);
                 for server in &mut self.servers {

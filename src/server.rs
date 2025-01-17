@@ -1,7 +1,7 @@
 use crate::api::{self, Channel, Request, Response, User};
 use crate::LocalMessage;
 use base64::prelude::*;
-use fmtstring::FmtString;
+use fmtstring::{FmtChar, FmtString};
 use native_tls::TlsConnector;
 use notify_rust::{Notification, Timeout};
 use serde::ser::{Serialize, SerializeStruct, Serializer};
@@ -117,6 +117,12 @@ impl LoadedMessage {
             .map(|x| x.name.as_str())
             .unwrap_or("Unknown User");
         let formatted = FmtString::from_str(&format!(" {}: {}", uname_str, self.message.content));
+        let datetime = chrono::DateTime::from_timestamp(self.message.date as i64, 0);
+        let date = FmtString::from_str(
+            &datetime
+                .map(|dt| dt.format("%H:%M").to_string())
+                .unwrap_or("??:??".to_string()),
+        );
 
         let pfp = peers
             .get(&self.message.author_uuid)
@@ -128,7 +134,7 @@ impl LoadedMessage {
         for c in formatted.into_iter() {
             // unwraps are ok because we start with at least 1 element
             let curr = self.lines.last().unwrap();
-            if c.ch == '\n' || curr.len() >= width - 1 {
+            if c.ch == '\n' || curr.len() >= width - 1 - date.len() {
                 self.lines
                     .push(FmtString::from_str(&" ".repeat(left_margin)))
             }
@@ -136,6 +142,16 @@ impl LoadedMessage {
             if c.ch != '\n' {
                 curr.push(c);
             }
+        }
+        while self.lines[0].len() < width - date.len() {
+            self.lines[0].push(FmtChar {
+                ch: ' ',
+                fg: fmtstring::Colour::None,
+                bg: fmtstring::Colour::None,
+            });
+        }
+        for c in date.into_iter() {
+            self.lines[0].push(c);
         }
     }
 }
